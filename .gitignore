@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+.envrc
+
+# Local secrets / state — never commit
+*.key
+wdgwars.key
+cooldown.json
+hwm.json
+
+# Sample/scratch data
+*.csv
+!example/*.csv
+*.json
+!example/*.json
