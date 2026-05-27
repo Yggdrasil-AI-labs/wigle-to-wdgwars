@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""wigle-to-wdgwars — push WiGLE-1.6 CSVs to the WDGoWars wardriving leaderboard.
+"""wigle-to-wdgwars: push WiGLE-1.6 CSVs to the WDGoWars wardriving leaderboard.
 
 WDGoWars (https://wdgwars.pl/) is a community wardriving leaderboard / game.
 This tool takes any WiGLE-format CSV (Wi-Fi + BLE observations with GPS) and
@@ -14,9 +14,9 @@ The key is read from (in order):
     3. ~/.config/wigle-to-wdgwars/wdgwars.key  (mode 600 recommended)
 
 Endpoints touched:
-    GET  /api/me           — validate key, read stats/badges/gang
-    POST /api/upload-csv   — bulk Wi-Fi/BLE ingest, multipart/form-data
-    POST /api/upload/      — signed JSON ingest (aircraft, mesh, etc.)
+    GET  /api/me           : validate key, read stats/badges/gang
+    POST /api/upload-csv   : bulk Wi-Fi/BLE ingest, multipart/form-data
+    POST /api/upload/      : signed JSON ingest (aircraft, mesh, etc.)
 
 Quickstart:
     # Validate your key
@@ -56,12 +56,20 @@ ENDPOINT = "https://wdgwars.pl/api/upload-csv"
 SIGNED_ENDPOINT = "https://wdgwars.pl/api/upload/"
 ME_ENDPOINT = "https://wdgwars.pl/api/me"
 
+# WiGLE: pull your own uploaded observations back out as CSV.
+# Auth is HTTP Basic with the pre-encoded token from https://wigle.net/account
+# ("Encoded for use", used verbatim after "Basic "). Contract mirrors the
+# community tool joelkoen/wigledl.
+WIGLE_TRANSACTIONS = "https://api.wigle.net/api/v2/file/transactions"
+WIGLE_CSV = "https://api.wigle.net/api/v2/file/csv/{transid}"
+
 USER_AGENT = "wigle-to-wdgwars/1.0 (+https://github.com/HiroAlleyCat/wigle-to-wdgwars)"
 
 # ───────────────────────────── Config paths ──────────────────────────────────
 
 CONFIG_DIR = Path.home() / ".config" / "wigle-to-wdgwars"
 DEFAULT_KEY_FILE = CONFIG_DIR / "wdgwars.key"
+WIGLE_KEY_FILE = CONFIG_DIR / "wigle.key"
 COOLDOWN_FILE = CONFIG_DIR / "cooldown.json"
 HWM_FILE = CONFIG_DIR / "hwm.json"
 
@@ -80,7 +88,7 @@ def _cooldown_check_and_sleep() -> None:
         return
     delta = deadline - time.time()
     if delta > 0:
-        print(f"[wdgwars] respecting server cooldown — sleeping {int(delta)}s", file=sys.stderr)
+        print(f"[wdgwars] respecting server cooldown, sleeping {int(delta)}s", file=sys.stderr)
         time.sleep(min(delta, 900))  # cap at 15 min so a stuck deadline can't deadlock us
 
 
@@ -132,6 +140,24 @@ def load_key(cli_key: str | None) -> str:
     )
 
 
+def load_wigle_token(cli_token: str | None) -> str:
+    """Resolve the WiGLE API token (the pre-encoded one from your account page).
+
+    Precedence: --wigle-key, then $WIGLE_API_KEY, then ~/.config/wigle-to-wdgwars/wigle.key.
+    """
+    if cli_token:
+        return cli_token.strip()
+    env = os.environ.get("WIGLE_API_KEY")
+    if env:
+        return env.strip()
+    if WIGLE_KEY_FILE.exists():
+        return WIGLE_KEY_FILE.read_text().strip()
+    sys.exit(
+        "no WiGLE token: pass --wigle-key, set WIGLE_API_KEY, or create "
+        f"{WIGLE_KEY_FILE}\nGet the 'Encoded for use' token from https://wigle.net/account"
+    )
+
+
 # ───────────────────────────── CSV reading ───────────────────────────────────
 
 def _read_csv_bytes(csv_path: Path) -> bytes:
@@ -180,14 +206,13 @@ def _post_one(csv_bytes: bytes, filename: str, key: str, field: str) -> tuple[in
         return e.code, e.read().decode("utf-8", "replace"), time.monotonic() - t0
 
 
-def _split_csv(csv_path: Path, chunk_rows: int) -> list[bytes]:
-    """Split a WiGLE-1.6 CSV into N-row chunks, preserving the 2-line header on each.
+def _split_bytes(csv_bytes: bytes, chunk_rows: int) -> list[bytes]:
+    """Split WiGLE CSV bytes into N-row chunks, preserving the 2-line header on each.
 
     Chunking is the workaround for the Cloudflare 524 (origin timeout) the
     WDGoWars proxy hits when a synchronous import takes >120 s. 10k rows per
     chunk lands comfortably under that cap.
     """
-    csv_bytes = _read_csv_bytes(csv_path)
     raw = csv_bytes.decode("utf-8").splitlines(keepends=False)
     if len(raw) < 3:
         return [csv_bytes]
@@ -200,6 +225,11 @@ def _split_csv(csv_path: Path, chunk_rows: int) -> list[bytes]:
         body = h1 + "\n" + h2 + "\n" + "\n".join(slice_rows) + "\n"
         chunks.append(body.encode("utf-8"))
     return chunks
+
+
+def _split_csv(csv_path: Path, chunk_rows: int) -> list[bytes]:
+    """Read a CSV (gzip-aware) and split into chunks. See _split_bytes."""
+    return _split_bytes(_read_csv_bytes(csv_path), chunk_rows)
 
 
 def _aggregate(payloads: list[dict]) -> dict:
@@ -223,16 +253,12 @@ def _aggregate(payloads: list[dict]) -> dict:
     return out
 
 
-def upload_csv(csv_path: Path, key: str, field: str, dry_run: bool,
-               chunk_rows: int = 0, cooldown_sec: float = 5.0) -> int:
-    """Upload a WiGLE CSV. Returns shell exit code (0 ok, 1 error)."""
-    if not csv_path.is_file():
-        sys.exit(f"csv not found: {csv_path}")
-    _cooldown_check_and_sleep()
-    chunks = _split_csv(csv_path, chunk_rows) if chunk_rows else [_read_csv_bytes(csv_path)]
+def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
+                   dry_run: bool, cooldown_sec: float) -> int:
+    """POST pre-split CSV chunks to WDGoWars. Returns shell exit code (0 ok)."""
     total_kb = sum(len(c) for c in chunks) / 1024
     print(
-        f"[wdgwars] POST {ENDPOINT} field={field} file={csv_path.name} "
+        f"[wdgwars] POST {ENDPOINT} field={field} file={name} "
         f"chunks={len(chunks)} total={total_kb:.1f} KB",
         file=sys.stderr,
     )
@@ -242,7 +268,7 @@ def upload_csv(csv_path: Path, key: str, field: str, dry_run: bool,
     payloads: list[dict] = []
     for idx, body in enumerate(chunks, 1):
         try:
-            status, raw, dur = _post_one(body, csv_path.name, key, field)
+            status, raw, dur = _post_one(body, name, key, field)
         except urllib.error.URLError as e:
             sys.exit(f"[wdgwars] network error on chunk {idx}/{len(chunks)}: {e}")
         try:
@@ -260,7 +286,7 @@ def upload_csv(csv_path: Path, key: str, field: str, dry_run: bool,
             _hwm_record(data)
         if status == 429:
             wait = float(data.get("retry_after") or cooldown_sec * 4)
-            print(f"[wdgwars] 429 cooldown — sleeping {wait:.0f}s", file=sys.stderr)
+            print(f"[wdgwars] 429 cooldown, sleeping {wait:.0f}s", file=sys.stderr)
             _cooldown_record(wait)
             time.sleep(wait)
         elif idx < len(chunks):
@@ -271,6 +297,24 @@ def upload_csv(csv_path: Path, key: str, field: str, dry_run: bool,
     agg = _aggregate(payloads)
     print(json.dumps(agg))
     return 0 if agg.get("ok") else 1
+
+
+def upload_csv_bytes(csv_bytes: bytes, name: str, key: str, field: str,
+                     dry_run: bool, chunk_rows: int = 0, cooldown_sec: float = 5.0) -> int:
+    """Upload WiGLE CSV bytes (e.g. pulled from WiGLE) to WDGoWars."""
+    _cooldown_check_and_sleep()
+    chunks = _split_bytes(csv_bytes, chunk_rows) if chunk_rows else [csv_bytes]
+    return _upload_chunks(chunks, name, key, field, dry_run, cooldown_sec)
+
+
+def upload_csv(csv_path: Path, key: str, field: str, dry_run: bool,
+               chunk_rows: int = 0, cooldown_sec: float = 5.0) -> int:
+    """Upload a WiGLE CSV file (gzip-aware). Returns shell exit code (0 ok, 1 error)."""
+    if not csv_path.is_file():
+        sys.exit(f"csv not found: {csv_path}")
+    _cooldown_check_and_sleep()
+    chunks = _split_csv(csv_path, chunk_rows) if chunk_rows else [_read_csv_bytes(csv_path)]
+    return _upload_chunks(chunks, csv_path.name, key, field, dry_run, cooldown_sec)
 
 
 # ───────────────────────────── Signed JSON path ──────────────────────────────
@@ -398,6 +442,89 @@ def whoami(key: str) -> int:
         return 1
 
 
+# ───────────────────────────── WiGLE pull path ───────────────────────────────
+
+def _wigle_get(url: str, token: str, timeout: float = 120) -> tuple[int, bytes]:
+    """GET a WiGLE API URL with HTTP Basic auth. Returns (status, body_bytes)."""
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Basic {token}",
+            "User-Agent": USER_AGENT,
+            "Accept": "application/json, text/csv",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
+def wigle_list_transactions(token: str, limit: int) -> list[str]:
+    """Return up to `limit` of your most recent WiGLE upload transaction IDs.
+
+    WiGLE returns newest first. Endpoint + field name (`transid`) follow the
+    /api/v2/file/transactions contract used by joelkoen/wigledl.
+    """
+    out: list[str] = []
+    page = 0
+    while len(out) < limit:
+        url = f"{WIGLE_TRANSACTIONS}?pagestart={page * 100}&pageend={(page + 1) * 100}"
+        status, body = _wigle_get(url, token)
+        if status == 401:
+            sys.exit("[wigle] HTTP 401: bad token. Use the 'Encoded for use' "
+                     "token from https://wigle.net/account")
+        if status != 200:
+            sys.exit(f"[wigle] transactions list failed: HTTP {status}: "
+                     f"{body[:200].decode('utf-8', 'replace')}")
+        try:
+            results = json.loads(body).get("results", [])
+        except json.JSONDecodeError:
+            sys.exit("[wigle] transactions response was not JSON")
+        if not results:
+            break
+        for r in results:
+            tid = r.get("transid")
+            if tid:
+                out.append(tid)
+                if len(out) >= limit:
+                    break
+        if len(results) < 100:
+            break
+        page += 1
+    return out
+
+
+def wigle_download_csv(token: str, transid: str) -> bytes:
+    """Download one WiGLE upload as CSV bytes."""
+    status, body = _wigle_get(WIGLE_CSV.format(transid=transid), token, timeout=300)
+    if status != 200:
+        sys.exit(f"[wigle] CSV download failed for {transid}: HTTP {status}")
+    return body
+
+
+def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
+                                    latest: int, dry_run: bool, chunk_rows: int,
+                                    cooldown_sec: float) -> int:
+    """Pull your latest WiGLE upload(s) and push each to WDGoWars."""
+    transids = wigle_list_transactions(wigle_token, latest)
+    if not transids:
+        print("[wigle] no uploads found on your account", file=sys.stderr)
+        return 0
+    print(f"[wigle] pulling {len(transids)} most-recent upload(s): "
+          f"{', '.join(transids)}", file=sys.stderr)
+    rc = 0
+    for tid in transids:
+        csv_bytes = wigle_download_csv(wigle_token, tid)
+        print(f"[wigle] {tid}: {len(csv_bytes) / 1024:.1f} KB -> WDGoWars",
+              file=sys.stderr)
+        r = upload_csv_bytes(csv_bytes, f"{tid}.csv", wdg_key, field,
+                             dry_run, chunk_rows, cooldown_sec)
+        rc = rc or r
+    return rc
+
+
 # ───────────────────────────── CLI ───────────────────────────────────────────
 
 def main() -> int:
@@ -407,7 +534,7 @@ def main() -> int:
         epilog="See README.md for the full WDGoWars API reference and cron recipes.",
     )
     ap.add_argument("csv", nargs="?",
-                    help="path to a WiGLE-1.6 CSV (or .gz — gzip is auto-detected); "
+                    help="path to a WiGLE-1.6 CSV (or .gz, gzip is auto-detected); "
                          "omit with --whoami or --aircraft-json")
     ap.add_argument("--field", default="file",
                     help="multipart field name (default: file)")
@@ -425,6 +552,15 @@ def main() -> int:
                     help="push a JSON list of aircraft records to the signed /api/upload/ endpoint")
     ap.add_argument("--aircraft-batch", type=int, default=1000,
                     help="aircraft records per signed POST (default: 1000)")
+    ap.add_argument("--from-wigle", action="store_true",
+                    help="pull your latest upload(s) straight from WiGLE and push them to "
+                         "WDGoWars, no file needed. Uses your WiGLE token (--wigle-key).")
+    ap.add_argument("--wigle-key", metavar="TOKEN",
+                    help="WiGLE 'Encoded for use' token (overrides $WIGLE_API_KEY and key file). "
+                         "Used with --from-wigle.")
+    ap.add_argument("--wigle-latest", type=int, default=1, metavar="N",
+                    help="with --from-wigle, how many most-recent WiGLE uploads to pull "
+                         "(default: 1)")
     args = ap.parse_args()
 
     key = load_key(args.key)
@@ -432,12 +568,18 @@ def main() -> int:
     if args.whoami:
         return whoami(key)
 
+    if args.from_wigle:
+        wigle_token = load_wigle_token(args.wigle_key)
+        return pull_from_wigle_push_to_wdgwars(
+            wigle_token, key, args.field, args.wigle_latest,
+            args.dry_run, args.chunk_size, args.chunk_cooldown)
+
     if args.aircraft_json:
         return upload_aircraft_json(Path(args.aircraft_json), key,
                                     dry_run=args.dry_run, batch=args.aircraft_batch)
 
     if not args.csv:
-        ap.error("provide a CSV path, --aircraft-json FILE, or --whoami")
+        ap.error("provide a CSV path, --from-wigle, --aircraft-json FILE, or --whoami")
 
     return upload_csv(Path(args.csv), key, args.field, args.dry_run,
                       chunk_rows=args.chunk_size, cooldown_sec=args.chunk_cooldown)

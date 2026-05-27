@@ -14,7 +14,7 @@ A small, zero-dependency Python 3 CLI. Stdlib only — no `pip install`.
 ## Contents
 
 - [What this is](#what-this-is)
-- [Quick start](#quick-start)
+- [Quick start](#quick-start) — includes [pull straight from WiGLE](#no-file-at-all--pull-straight-from-wigle) (no file needed)
 - [Installing](#installing)
 - [Getting a WiGLE CSV in the first place](#getting-a-wigle-csv-in-the-first-place)
 - [Running on a schedule (timer)](#running-on-a-schedule-timer) — Windows, cron, or systemd
@@ -40,7 +40,9 @@ contract from network captures or open-source firmware. This tool:
 1. Pushes a WiGLE-1.6 CSV to `/api/upload-csv` for Wi-Fi + BLE.
 2. Pushes a JSON list of aircraft records to the signed `/api/upload/`
    endpoint.
-3. Documents the wire format so the next person doesn't have to start over
+3. Optionally **pulls your uploads straight from WiGLE** (`--from-wigle`) and
+   pushes them, so you never touch a file.
+4. Documents the wire format so the next person doesn't have to start over
    (see [WDGoWars API reference](#wdgwars-api-reference)).
 
 It's designed to be readable, droppable into a cron job, and friendly to
@@ -85,6 +87,27 @@ why.
 
 If you'd rather not paste the key every time, you can store it once instead —
 see [Where the API key is read from](#where-the-api-key-is-read-from-in-order).
+
+### No file at all — pull straight from WiGLE
+
+If you wardrive with the WiGLE app, your runs already get uploaded to WiGLE.
+With `--from-wigle` the tool grabs your latest upload from WiGLE directly and
+pushes it to WDGoWars — you never export, unzip, or move a file.
+
+You need two keys: your **WDGoWars** key (`--key`) and your **WiGLE** token
+(`--wigle-key`, the "Encoded for use" string from
+[wigle.net/account](https://wigle.net/account)).
+
+```bash
+python3 wigle_to_wdgwars.py --from-wigle \
+    --wigle-key YOUR_WIGLE_ENCODED_TOKEN \
+    --key YOUR_WDGWARS_API_KEY \
+    --chunk-size 10000
+```
+
+By default it pulls your single most-recent upload. Use `--wigle-latest N` to
+push the last N uploads instead. This is the mode to put on a
+[timer](#running-on-a-schedule-timer) for a fully hands-off pipeline.
 
 ---
 
@@ -217,11 +240,20 @@ aa:bb:cc:dd:ee:ff,ExampleSSID,[WPA2-PSK-CCMP][ESS],2026-05-23 12:00:00,6,-55,41.
 The point of a leaderboard is showing up consistently. Instead of pushing by
 hand every time, set a timer and forget it.
 
-**The simple version:** always export (or save) your WiGLE file to the *same
-path* — e.g. `wardrive.wiglecsv.gz` — and point a timer at that path. Each run
-re-pushes the file; WDGoWars dedupes server-side, so re-sending the same data
-is harmless and still picks up any new rows or merged location samples. Pick
-the recipe for your OS below.
+**The truly hands-off version:** use `--from-wigle` (see
+[No file at all](#no-file-at-all--pull-straight-from-wigle)). The timer pulls
+your latest WiGLE upload and pushes it to WDGoWars with no file involved at
+all. Swap the command in any recipe below for:
+
+```
+python wigle_to_wdgwars.py --from-wigle --wigle-key WIGLE_TOKEN --key WDGWARS_KEY --chunk-size 10000
+```
+
+**The file-based version:** always export (or save) your WiGLE file to the
+*same path* — e.g. `wardrive.wiglecsv.gz` — and point a timer at that path.
+Each run re-pushes the file; WDGoWars dedupes server-side, so re-sending the
+same data is harmless and still picks up any new rows or merged location
+samples. Pick the recipe for your OS below.
 
 ### Windows — Task Scheduler
 
@@ -416,6 +448,24 @@ server treats it as a valid file.
 | 401 | `{"error":"Invalid API key"}` | Bad/expired key, or you used `Authorization: Bearer …` instead of `X-API-Key:`. |
 | 429 | `{"error":"Another upload is already being processed …","retry_after":N}` | Per-account queue. Wait `retry_after` seconds. |
 | 524 | (HTML from Cloudflare) | Origin timed out. Chunk smaller. Rows are still ingesting on the origin. |
+
+### WiGLE API (the `--from-wigle` pull side)
+
+`--from-wigle` reads your own uploads back out of WiGLE, then feeds them into
+the WDGoWars push above. The WiGLE side uses HTTP Basic auth with the
+**pre-encoded token** from [wigle.net/account](https://wigle.net/account) (the
+"Encoded for use" string), sent as `Authorization: Basic <token>`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/v2/file/transactions?pagestart=N&pageend=M` | List your uploads, newest first, paged 100 at a time. Each result has a `transid`. |
+| `GET` | `/api/v2/file/csv/{transid}` | Download that upload as a WiGLE CSV. |
+
+The tool lists the newest `--wigle-latest N` transactions and downloads each as
+CSV. This mirrors the contract used by the community tool
+[joelkoen/wigledl](https://github.com/joelkoen/wigledl). WiGLE enforces its own
+per-account query limits, so pulling your whole history in one run can hit a
+rate cap — pulling the latest upload (the default) stays well under it.
 
 ---
 
