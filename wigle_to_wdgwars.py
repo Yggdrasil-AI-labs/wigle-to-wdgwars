@@ -34,14 +34,14 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
+__version__ = "1.1.0"
+GITHUB_URL = "https://github.com/HiroAlleyCat/wigle-to-wdgwars"
+
 import argparse
-import base64
 import gzip
-import hashlib
-import hmac
 import json
+import logging
 import os
-import secrets
 import sys
 import time
 import urllib.error
@@ -50,11 +50,13 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import gungnir
+
 # ───────────────────────────── Endpoints ─────────────────────────────────────
 
 ENDPOINT = "https://wdgwars.pl/api/upload-csv"
-SIGNED_ENDPOINT = "https://wdgwars.pl/api/upload/"
-ME_ENDPOINT = "https://wdgwars.pl/api/me"
+SIGNED_ENDPOINT = gungnir.DEFAULT_API_URL  # https://wdgwars.pl/api/upload/
+ME_ENDPOINT = gungnir.ME_API_URL
 
 # WiGLE: pull your own uploaded observations back out as CSV.
 # Auth is HTTP Basic with the pre-encoded token from https://wigle.net/account
@@ -63,7 +65,24 @@ ME_ENDPOINT = "https://wdgwars.pl/api/me"
 WIGLE_TRANSACTIONS = "https://api.wigle.net/api/v2/file/transactions"
 WIGLE_CSV = "https://api.wigle.net/api/v2/file/csv/{transid}"
 
-USER_AGENT = "wigle-to-wdgwars/1.0 (+https://github.com/HiroAlleyCat/wigle-to-wdgwars)"
+USER_AGENT = f"wigle-to-wdgwars/{__version__} (+{GITHUB_URL})"
+
+# CLI tool — keep the v1.0 stderr-line-per-event behavior so cron logs
+# look familiar. Library consumers can override.
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(message)s",
+        stream=sys.stderr,
+    )
+
+# Single Client for the process. Bundles per-tool identity so gungnir's
+# whoami/send paths emit `wigle-to-wdgwars/1.1.0 (+...)` as the UA.
+_client = gungnir.Client(
+    tool="wigle-to-wdgwars",
+    version=__version__,
+    user_agent_extra=GITHUB_URL,
+)
 
 # ───────────────────────────── Config paths ──────────────────────────────────
 
@@ -78,49 +97,32 @@ HWM_FILE = CONFIG_DIR / "hwm.json"
 def _cooldown_check_and_sleep() -> None:
     """Respect a server cooldown set by a previous 429 response.
 
-    Persists across invocations so a cron job running every N minutes does
-    not hammer the server while a queued upload is still being processed.
+    Delegates to gungnir.cooldown. Persists across invocations so a cron
+    job running every N minutes does not hammer the server while a
+    queued upload is still being processed.
+
+    Note: gungnir uses its OWN config dir convention for the cooldown
+    file (`<config_dir>/cooldown.json` for `tool="wigle-to-wdgwars"`).
+    On POSIX this is `~/.config/wigle-to-wdgwars/cooldown.json` —
+    byte-identical path to v1.0. On Windows this moves to
+    `%APPDATA%/wigle-to-wdgwars/cooldown.json` — different from v1.0
+    but cooldown state is ephemeral, so the migration is harmless.
     """
-    try:
-        d = json.loads(COOLDOWN_FILE.read_text())
-        deadline = float(d.get("until", 0))
-    except Exception:
-        return
-    delta = deadline - time.time()
-    if delta > 0:
-        print(f"[wdgwars] respecting server cooldown, sleeping {int(delta)}s", file=sys.stderr)
-        time.sleep(min(delta, 900))  # cap at 15 min so a stuck deadline can't deadlock us
+    gungnir.cooldown.check_and_sleep("wigle-to-wdgwars")
 
 
 def _cooldown_record(seconds: float) -> None:
-    if not seconds or seconds <= 0:
-        try:
-            COOLDOWN_FILE.unlink(missing_ok=True)
-        except Exception:
-            pass
-        return
-    try:
-        COOLDOWN_FILE.parent.mkdir(parents=True, exist_ok=True)
-        COOLDOWN_FILE.write_text(json.dumps({"until": time.time() + float(seconds)}))
-    except Exception as e:
-        print(f"[wdgwars] cooldown persist failed: {e}", file=sys.stderr)
+    gungnir.cooldown.record("wigle-to-wdgwars", seconds)
 
 
 # ───────────────────────────── HWM tracking ──────────────────────────────────
 
 def _hwm_record(payload: dict) -> None:
-    """Persist last-successful-upload watermark for visibility / monitoring."""
-    try:
-        HWM_FILE.parent.mkdir(parents=True, exist_ok=True)
-        d = {
-            "last_upload_iso": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "last_upload_ts": time.time(),
-            "last_upload_imported": payload.get("imported", 0),
-            "last_upload_payload": payload,
-        }
-        HWM_FILE.write_text(json.dumps(d, indent=2))
-    except Exception as e:
-        print(f"[wdgwars] HWM persist failed: {e}", file=sys.stderr)
+    """Persist last-successful-upload watermark for visibility / monitoring.
+
+    Delegates to gungnir.hwm. Same config-dir caveat as
+    :func:`_cooldown_check_and_sleep`."""
+    gungnir.hwm.record("wigle-to-wdgwars", payload)
 
 
 # ───────────────────────────── Key loading ───────────────────────────────────
@@ -322,53 +324,65 @@ def upload_csv(csv_path: Path, key: str, field: str, dry_run: bool,
 def _post_signed(payload: dict, key: str) -> tuple[int, dict, float]:
     """POST a signed JSON payload to /api/upload/.
 
-    Envelope shape required by the server:
-        { "data": base64(json(payload)), "nonce": <hex>, "sig": hmac_sha256(key, nonce + data) }
+    .. deprecated:: 1.1.0
+        Kept as a thin backward-compat shim. New code should call
+        :func:`gungnir.transport.send_chunk` directly with the
+        appropriate slot kwarg (``aircraft=``, ``meshcore_nodes=``,
+        etc.) instead of pre-building the payload dict.
 
-    Returns (status, parsed_response, duration_s).
+    Returns (status, parsed_response, duration_s). Status is 200 on
+    success, otherwise the underlying gungnir rc (1) — the exact HTTP
+    code is no longer surfaced for non-2xx responses (gungnir handles
+    them internally with retry/backoff/cooldown).
     """
-    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    nonce = secrets.token_hex(8)
-    data_b64 = base64.b64encode(raw).decode("ascii")
-    sig = hmac.new(
-        key.encode("utf-8"),
-        (nonce + data_b64).encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    body = json.dumps({"data": data_b64, "nonce": nonce, "sig": sig}).encode()
-    req = urllib.request.Request(
-        SIGNED_ENDPOINT, data=body, method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": key,
-            "User-Agent": USER_AGENT,
-            "Accept": "application/json",
-        },
-    )
+    aircraft = payload.get("aircraft") or None
+    networks = payload.get("networks") or None
+    meshcore_nodes = payload.get("meshcore_nodes") or None
     t0 = time.monotonic()
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read().decode("utf-8", "replace"))
-            return resp.status, data, time.monotonic() - t0
-    except urllib.error.HTTPError as e:
-        try:
-            data = json.loads(e.read().decode("utf-8", "replace"))
-        except Exception:
-            data = {"ok": False, "error": f"HTTP {e.code}"}
-        return e.code, data, time.monotonic() - t0
+    # Build the slot kwargs dict, dropping empties (gungnir wants exactly one).
+    slot_kwargs: dict = {}
+    for name, lst in (("aircraft", aircraft), ("networks", networks),
+                      ("meshcore_nodes", meshcore_nodes)):
+        if lst:
+            slot_kwargs[name] = lst
+            break  # first-non-empty wins; matches v1.0 behavior in practice
+    if not slot_kwargs:
+        # Empty payload — treat as success-noop to mirror v1.0 semantics
+        return 200, {"ok": True, "imported": 0}, time.monotonic() - t0
+    inner_payload = gungnir.build_payload(**slot_kwargs)
+    rc, data = gungnir.transport.send_chunk(
+        "wigle-to-wdgwars", __version__, SIGNED_ENDPOINT, key,
+        inner_payload,
+        sent_count=len(next(iter(slot_kwargs.values()))),
+        user_agent_extra=GITHUB_URL,
+    )
+    status = 200 if rc == 0 else 1
+    return status, data, time.monotonic() - t0
 
 
 def upload_aircraft_json(aircraft_path: Path, key: str, dry_run: bool = False,
-                          batch: int = 1000) -> int:
+                          batch: int = 500) -> int:
     """Push a JSON file of aircraft records to the signed endpoint.
 
     Expected file format: a JSON list of dicts, each with at minimum
-    `icao`, `lat`, `lon`, `first_seen` (and ideally callsign / alt_ft / speed_kt).
-    See README.md for the full aircraft record schema.
+    `icao`, `lat`, `lon`, `first_seen` (and ideally callsign / alt_ft /
+    speed_kt). See README.md for the full aircraft record schema.
+
+    Behavior (inherited from gungnir 0.1.x):
+
+    - Retry 5xx + network errors with exponential backoff.
+    - 429 stops the whole batch and persists a cooldown the next cron
+      tick respects.
+    - Silent-drop pattern (HTTP 200 ok:true with every counter zero)
+      now returns rc=1 instead of just logging. v1.0 had no detection.
+    - Inter-chunk cooldown of 1s.
+    - User-Agent now includes the repo URL per RFC bot-UA.
+
+    Default ``batch`` dropped from 1000 to 500 per locosp's
+    recommendation (100-500 range).
     """
     if not aircraft_path.is_file():
         sys.exit(f"aircraft json not found: {aircraft_path}")
-    _cooldown_check_and_sleep()
     try:
         aircraft = json.loads(aircraft_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
@@ -385,61 +399,20 @@ def upload_aircraft_json(aircraft_path: Path, key: str, dry_run: bool = False,
     if dry_run:
         print("[wdgwars] dry-run: not sending aircraft", file=sys.stderr)
         return 0
-    total_imp = total_seen = 0
-    rc = 0
-    for i in range(0, len(aircraft), batch):
-        chunk = aircraft[i:i + batch]
-        status, data, dur = _post_signed(
-            {"networks": [], "aircraft": chunk, "meshcore_nodes": []}, key,
-        )
-        imp = data.get("aircraft_imported", 0)
-        seen = data.get("aircraft_already_seen", 0)
-        _hwm_record({"path": "aircraft", "imported": imp, "already_seen": seen})
-        total_imp += imp
-        total_seen += seen
-        print(
-            f"[wdgwars] aircraft chunk {i // batch + 1} HTTP {status} in "
-            f"{dur:.1f}s imported={imp} already_seen={seen} "
-            f"badges={data.get('new_badges') or []}",
-            file=sys.stderr,
-        )
-        if status != 200 or not data.get("ok"):
-            rc = 1
-            print(json.dumps(data), file=sys.stderr)
-            if status == 429:
-                wait = float(data.get("retry_after") or 20)
-                _cooldown_record(wait)
-                time.sleep(wait)
-        elif i + batch < len(aircraft):
-            time.sleep(2)
-    agg = {
-        "ok": rc == 0,
-        "aircraft_sent": len(aircraft),
-        "aircraft_imported": total_imp,
-        "aircraft_already_seen": total_seen,
-    }
-    print(json.dumps(agg))
-    return rc
+    return _client.send(key, aircraft=aircraft, batch_size=batch)
 
 
 # ───────────────────────────── /api/me ───────────────────────────────────────
 
 def whoami(key: str) -> int:
-    """GET /api/me. Print the JSON. Return 0 on 2xx, 1 otherwise."""
-    req = urllib.request.Request(
-        ME_ENDPOINT,
-        headers={"X-API-Key": key, "User-Agent": USER_AGENT, "Accept": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            print(resp.read().decode("utf-8", "replace"))
-            return 0
-    except urllib.error.HTTPError as e:
-        print(f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')}", file=sys.stderr)
-        return 1
-    except urllib.error.URLError as e:
-        print(f"network error: {e}", file=sys.stderr)
-        return 1
+    """GET /api/me. Logs username + account stats on success. Return 0
+    on success, 1 on any failure.
+
+    .. versionchanged:: 1.1.0
+        Now delegates to gungnir. v1.0 printed the raw JSON to stdout;
+        v1.1 logs a structured summary to stderr (matches the rest of
+        the v1.1 logging output)."""
+    return _client.whoami(key)
 
 
 # ───────────────────────────── WiGLE pull path ───────────────────────────────
@@ -550,8 +523,8 @@ def main() -> int:
                     help="GET /api/me to validate the API key, then exit")
     ap.add_argument("--aircraft-json", metavar="FILE",
                     help="push a JSON list of aircraft records to the signed /api/upload/ endpoint")
-    ap.add_argument("--aircraft-batch", type=int, default=1000,
-                    help="aircraft records per signed POST (default: 1000)")
+    ap.add_argument("--aircraft-batch", type=int, default=500,
+                    help="aircraft records per signed POST (default: 500)")
     ap.add_argument("--from-wigle", action="store_true",
                     help="pull your latest upload(s) straight from WiGLE and push them to "
                          "WDGoWars, no file needed. Uses your WiGLE token (--wigle-key).")

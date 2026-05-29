@@ -1,0 +1,8 @@
+# Required: shared transport client for wdgwars.pl (HMAC envelope, retry,
+# cooldown, silent-drop detection, key management). Same library Muninn
+# v2.0 sits on.
+#
+# Pinned to v0.1.1 for reproducibility. Bumped deliberately when we
+# upgrade gungnir. Switch to a normal `gungnir>=X.Y` pin once gungnir
+# publishes to PyPI.
+gungnir @ git+https://github.com/HiroAlleyCat/gungnir@v0.1.1
