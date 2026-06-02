@@ -161,18 +161,21 @@ class SchtasksRendererTests(unittest.TestCase):
         self.assertIn("--from-wigle", action)
         self.assertIn("--chunk-size 10000", action)
 
-    def test_action_wrapped_in_cmd_for_logging(self):
-        """schtasks captures nothing on its own. We wrap the python call in
-        `cmd /c "... >> "<log>" 2>&1"` so the daily run leaves an
-        inspectable log under the user profile."""
-        cmd = w.render_schtasks_create("03:00", True, 10000, PY, SCRIPT)
+    def test_action_within_261_char_schtasks_limit(self):
+        """schtasks /TR hard-caps at 261 chars. Use a realistic long
+        venv-python path to make sure we stay under it. (Earlier attempt
+        to wrap the action in `cmd /c "... >> log 2>&1"` for stdout
+        capture pushed past this limit on standard install paths and was
+        rolled back.)"""
+        realistic_py = Path(r"C:\Users\someuser\AppData\Local\Temp\wigle-to-wdgwars\.venv\Scripts\python.exe")
+        realistic_script = Path(r"C:\Users\someuser\AppData\Local\Temp\wigle-to-wdgwars\wigle_to_wdgwars.py")
+        cmd = w.render_schtasks_create("03:00", True, 10000,
+                                       str(realistic_py), realistic_script,
+                                       dry_run=True)
         action = cmd[cmd.index("/TR") + 1]
-        self.assertTrue(action.startswith("cmd /c "),
-                        f"action must be cmd-wrapped for logging, got: {action!r}")
-        self.assertIn(">>", action, "missing append-redirect for stdout/stderr")
-        self.assertIn("2>&1", action, "missing stderr-merge for log capture")
-        self.assertIn("%USERPROFILE%\\.wigle-to-wdgwars-cron.log", action,
-                      "log path must point under the user profile")
+        self.assertLessEqual(len(action), 261,
+                             f"action length {len(action)} exceeds schtasks "
+                             f"/TR limit. action={action!r}")
 
     def test_action_quotes_paths_with_spaces(self):
         space_script = Path(r"C:\Program Files\wigle-to-wdgwars\wigle_to_wdgwars.py")

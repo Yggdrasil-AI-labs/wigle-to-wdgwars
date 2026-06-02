@@ -965,12 +965,12 @@ def render_schtasks_create(time_hhmm: str, use_from_wigle: bool,
                            dry_run: bool = False) -> list[str]:
     """Render the `schtasks /Create` argv for Windows. Pure.
 
-    Wraps the python invocation in `cmd /c "... >> "<log>" 2>&1"` so the
-    scheduled task's stdout + stderr are appended to a log file under the
-    user's profile. schtasks itself captures nothing — without this, a
-    user who comes back the next day has no way to see what `--dry-run`
-    actually pulled or why the task exited non-zero, only the integer
-    Last Result. Mirrors the cron path's `~/.wigle-to-wdgwars-cron.log`.
+    No `cmd /c "... >> log 2>&1"` wrap: `schtasks /TR` hard-caps the
+    action string at 261 characters, and the wrap form blows past that
+    once the full venv-python path is included. Users see daily-run
+    outcome via Task Scheduler's "Last Result" column instead, or by
+    running the same command manually from PowerShell to inspect stderr.
+    The README's troubleshooting section walks through both paths.
     """
     time_hhmm = _validate_hhmm(time_hhmm)
     argv = _schedule_argv(use_from_wigle, chunk_size)
@@ -978,15 +978,7 @@ def render_schtasks_create(time_hhmm: str, use_from_wigle: bool,
     argv[1] = str(script_path)
     if dry_run:
         argv.append("--dry-run")
-    # Quote each token for cmd.exe — anything with whitespace gets wrapped.
-    py_cmd = " ".join(f'"{a}"' if " " in a else a for a in argv)
-    log_path = "%USERPROFILE%\\.wigle-to-wdgwars-cron.log"
-    # `schtasks /TR` gets the whole action as one string. The outer
-    # `cmd /c "..."` lets us redirect stdout+stderr. cmd's quoting rule:
-    # the first and last `"` of the `cmd /c` arg are stripped, so embedded
-    # quotes inside the body survive. schtasks parses this fine because
-    # it doesn't try to re-interpret the action string's quotes.
-    action = f'cmd /c "{py_cmd} >> "{log_path}" 2>&1"'
+    action = " ".join(f'"{a}"' if " " in a else a for a in argv)
     return ["schtasks", "/Create", "/TN", WINDOWS_TASK_NAME,
             "/TR", action, "/SC", "DAILY", "/ST", time_hhmm,
             "/RL", "LIMITED", "/F"]
@@ -1130,7 +1122,8 @@ def install_windows_task(time_hhmm: str, use_from_wigle: bool,
           file=sys.stderr)
     print(f"[schedule] run now: schtasks /Run /TN {WINDOWS_TASK_NAME}",
           file=sys.stderr)
-    print(f"[schedule] log:     %USERPROFILE%\\.wigle-to-wdgwars-cron.log",
+    print(f"[schedule] (Task Scheduler doesn't capture stdout — to see "
+          f"what a run did, fire it from PowerShell directly.)",
           file=sys.stderr)
     return 0
 

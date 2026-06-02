@@ -160,9 +160,12 @@ crontab -l | grep wigle-to-wdgwars
 tail -f ~/.wigle-to-wdgwars-cron.log
 
 # Windows (schtasks)
-schtasks /Query /TN WigleToWDGoWars /V /FO LIST
-schtasks /Run   /TN WigleToWDGoWars             :: fire one tick now
-notepad %USERPROFILE%\.wigle-to-wdgwars-cron.log
+schtasks /Query /TN WigleToWDGoWars /V /FO LIST          :: shows Last Run Result
+schtasks /Run   /TN WigleToWDGoWars                      :: fire one tick now
+# Task Scheduler does NOT capture stdout. To see what a run produces,
+# fire the same command from PowerShell yourself:
+.venv\Scripts\python wigle_to_wdgwars.py --from-wigle --wigle-latest 1 \
+    --chunk-size 10000 --dry-run
 ```
 
 A `--dry-run` tick that succeeded looks like (in the log / journal):
