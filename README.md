@@ -20,11 +20,11 @@ Sibling repos in the WDGoWars feeder family:
 
 - [What this is](#what-this-is)
 - [Easiest install — guided setup](#easiest-install--guided-setup) — `./setup.sh` saves both keys and installs a daily timer
-- [Quick start](#quick-start) — paste keys on the command line, no config files
+- [Quick start — one-off push without saving keys](#quick-start--one-off-push-without-saving-keys)
 - [Installing](#installing) — manual venv + pip flow
 - [Getting a WiGLE CSV in the first place](#getting-a-wigle-csv-in-the-first-place)
 - [Running on a schedule (timer)](#running-on-a-schedule-timer) — what `--schedule` installs, plus hand-written recipes
-- [WDGoWars API reference](#wdgwars-api-reference) — reverse-engineered, since the portal has no public docs
+- [WDGoWars API reference](#wdgowars-api-reference) — reverse-engineered, since the portal has no public docs
 - [Aircraft JSON format (signed endpoint)](#aircraft-json-format-signed-endpoint)
 - [Troubleshooting](#troubleshooting)
 - [Related tools](#related-tools)
@@ -329,11 +329,32 @@ If you skip the second line on a dep-bump release, you'll end up with
 new code importing the old gungnir bytes, which is a recipe for subtle
 parity bugs.
 
-### Where the API key is read from (in order)
+### Where the API keys are read from (in order)
+
+**WDGoWars** (`--key` / `$WDGWARS_API_KEY` / `wdgwars.key`):
 
 1. `--key YOUR_KEY` on the command line.
 2. `$WDGWARS_API_KEY` environment variable.
-3. `~/.config/wigle-to-wdgwars/wdgwars.key` (mode 600 recommended).
+3. `~/.config/wigle-to-wdgwars/wdgwars.key` (mode 600).
+
+**WiGLE** (`--wigle-key` / `$WIGLE_API_KEY` / `wigle.key`, used by `--from-wigle`):
+
+1. `--wigle-key YOUR_TOKEN` on the command line.
+2. `$WIGLE_API_KEY` environment variable.
+3. `~/.config/wigle-to-wdgwars/wigle.key` (mode 600).
+
+`--setup` saves both as files for you. To save them non-interactively (for
+provisioning from a script):
+
+```bash
+.venv/bin/python wigle_to_wdgwars.py --save-key       YOUR_WDGWARS_KEY
+.venv/bin/python wigle_to_wdgwars.py --save-wigle-key YOUR_WIGLE_TOKEN
+```
+
+> **Note on scheduled runs:** systemd / cron / schtasks run in a stripped-
+> down environment that does *not* inherit `$WDGWARS_API_KEY` /
+> `$WIGLE_API_KEY` from your shell. The scheduled command reads the key
+> *files*. If you only export env vars, the timer will fail at run time.
 
 The script also writes two state files in `~/.config/wigle-to-wdgwars/`:
 
