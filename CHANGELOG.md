@@ -4,6 +4,58 @@ All notable changes to wigle-to-wdgwars are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-06-03 - Family-parity catch-up
+
+Closes the flag-surface gaps between wigle-to-wdgwars and its sibling
+feeders (Muninn, Heimdall). The five flags ported below were already
+shipping in the other two uploaders; wigle-to-wdgwars is now at full
+flag parity with the family.
+
+### Added
+
+- `--update`: in-place self-update. Uses `git pull --ff-only` when this
+  is a git checkout, otherwise fetches `wigle_to_wdgwars.py` and
+  `requirements.txt` from raw GitHub atomically. Refreshes deps via
+  `python -m pip install --upgrade -r requirements.txt` after the swap,
+  so a future release bumping a pinned dep self-heals. Mirrors the
+  Muninn/Heimdall implementation byte-for-byte modulo naming.
+- `--preview`: parser dry-run. Prints the first 6 data rows of the
+  WiGLE CSV as JSON-lines to stdout and exits. Decompresses gzip
+  transparently. No network, no upload. Mirrors Heimdall and Muninn
+  `--preview` for cross-tool consistency.
+- `-q` / `--quiet`: suppress informational banners. Errors still
+  print. Gates the daily version-check nudge alongside
+  `--no-version-check`.
+- `--no-version-check`: skip the daily GitHub releases probe entirely.
+  Useful for offline or privacy-conscious setups, and for CI.
+- `--api-url URL`: override the CSV upload endpoint. Useful for
+  staging hosts or local mocks. The signed aircraft-JSON endpoint
+  (`/endpoint/upload/`) is unchanged — override there belongs in
+  Muninn.
+- Version-check banner: daily-cached probe of the GitHub releases
+  API. Prints a non-blocking nudge if a newer tag is available.
+  Cache lives at `~/.config/wigle-to-wdgwars/version-check.json`.
+- `SECURITY.md`: ported from Heimdall; documents the network
+  footprint, key-handling, and HMAC envelope. Updated to reflect
+  the current v1.3.0 surface (the Heimdall original was stale).
+
+### Tests
+
+- `tests/test_family_parity.py`: 10 new unit tests covering
+  `preview_csv` (gzip, short files, empty data sections),
+  `_check_for_update` cache hits, `--api-url` runtime override of
+  the module-level ENDPOINT, and `--update` / `--preview` dispatch
+  in `main()`. Network is mocked throughout.
+
+### Notes
+
+- `--watch` is intentionally NOT added. WiGLE CSV uploads are
+  bulk one-shot by nature; the polling equivalent for this feeder
+  is `--from-wigle --schedule`, which pulls fresh transactions
+  from `api.wigle.net` on a daily timer. If you have a continuous
+  stream of incoming CSV files, Muninn (ADS-B) and Heimdall
+  (meshcore) are the watch-shaped tools.
+
 ## [1.2.1] - 2026-06-03 - Family-alignment housekeeping
 
 Patch release surfacing the lessons from the 2026-06-03 feeder-family

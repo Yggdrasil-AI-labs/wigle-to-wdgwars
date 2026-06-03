@@ -34,8 +34,9 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.2.1"
-GITHUB_URL = "https://github.com/HiroAlleyCat/wigle-to-wdgwars"
+__version__ = "1.3.0"
+GITHUB_REPO = "HiroAlleyCat/wigle-to-wdgwars"
+GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
 import argparse
 import gzip
@@ -43,6 +44,7 @@ import json
 import logging
 import os
 import shutil
+import ssl
 import subprocess
 import sys
 import textwrap
@@ -54,6 +56,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import gungnir
+
+_SSL_CTX = ssl.create_default_context()
 
 # ───────────────────────────── Endpoints ─────────────────────────────────────
 
@@ -94,6 +98,199 @@ DEFAULT_KEY_FILE = CONFIG_DIR / "wdgwars.key"
 WIGLE_KEY_FILE = CONFIG_DIR / "wigle.key"
 COOLDOWN_FILE = CONFIG_DIR / "cooldown.json"
 HWM_FILE = CONFIG_DIR / "hwm.json"
+
+# ───────────────────────────── Self-update / version check ──────────────────
+#
+# Ported from Heimdall/Muninn for family parity. Same shape: a daily-cached
+# GitHub releases probe + an in-place updater that prefers `git pull` when
+# the script is in a checkout and falls back to fetching raw GitHub when it
+# isn't. requirements.txt gets refreshed too so a future release that bumps
+# a pinned dep self-heals without a wrapper-script revision.
+
+def _check_for_update() -> str | None:
+    """Quick non-blocking version check against the GitHub releases API.
+    Cached for 24h in the user's config dir so we do not hammer the API.
+    Returns the latest tag if newer than __version__, else None."""
+    cache = CONFIG_DIR / "version-check.json"
+    try:
+        if cache.exists():
+            blob = json.loads(cache.read_text())
+            if time.time() - blob.get("checked_at", 0) < 86400:
+                latest = blob.get("latest")
+                return latest if latest and latest != __version__ else None
+    except Exception:
+        pass
+    try:
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+            headers={"User-Agent": f"wigle-to-wdgwars/{__version__}"})
+        with urllib.request.urlopen(req, timeout=3, context=_SSL_CTX) as r:
+            data = json.loads(r.read())
+            latest = (data.get("tag_name") or "").lstrip("v")
+    except Exception:
+        return None
+    try:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({"checked_at": time.time(), "latest": latest}))
+    except Exception:
+        pass
+    return latest if latest and latest != __version__ else None
+
+
+def _run_update() -> int:
+    """Update wigle-to-wdgwars in place. Uses `git pull` when this is a git
+    checkout; otherwise downloads wigle_to_wdgwars.py from raw GitHub. Both
+    paths refresh requirements.txt + re-run pip install, so dep bumps don't
+    leave the user with an updated script importing a missing module."""
+    script_dir = Path(__file__).resolve().parent
+    git_dir = script_dir / ".git"
+    if git_dir.exists():
+        print(f"[wigle-to-wdgwars] updating via git pull in {script_dir}",
+              file=sys.stderr)
+        try:
+            r = subprocess.run(
+                ["git", "-C", str(script_dir), "pull", "--ff-only"],
+                capture_output=True, text=True, timeout=30)
+            print(r.stdout.strip(), file=sys.stderr)
+            if r.returncode != 0:
+                print(r.stderr.strip(), file=sys.stderr)
+                return r.returncode
+            _pip_install_requirements(script_dir)
+            print(f"[wigle-to-wdgwars] now on v{__version__} (re-run with "
+                  f"--version to confirm latest)", file=sys.stderr)
+            return 0
+        except FileNotFoundError:
+            print("[wigle-to-wdgwars] git not found in PATH. Install git, or "
+                  "download wigle_to_wdgwars.py manually.", file=sys.stderr)
+            return 1
+    return _update_from_raw(script_dir)
+
+
+def _fetch_raw(path: str, dest: Path) -> bool:
+    """Fetch a file from the repo's main branch to dest atomically.
+    Returns True on success, False on failure (logs the reason)."""
+    raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{path}"
+    print(f"[wigle-to-wdgwars] fetching {path} from {raw_url}", file=sys.stderr)
+    try:
+        req = urllib.request.Request(raw_url, headers={
+            "User-Agent": f"wigle-to-wdgwars/{__version__}"})
+        with urllib.request.urlopen(req, timeout=15, context=_SSL_CTX) as r:
+            body = r.read()
+    except Exception as e:
+        print(f"[wigle-to-wdgwars] download of {path} failed: {e}",
+              file=sys.stderr)
+        return False
+    tmp = dest.with_suffix(dest.suffix + ".new")
+    try:
+        tmp.write_bytes(body)
+        os.replace(tmp, dest)
+    except OSError as e:
+        print(f"[wigle-to-wdgwars] couldn't write {dest}: {e}",
+              file=sys.stderr)
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return False
+    return True
+
+
+def _pip_install_requirements(script_dir: Path) -> None:
+    """Best-effort `python -m pip install -r requirements.txt` against the
+    interpreter currently running wigle-to-wdgwars. Never fails the caller —
+    prints a clear hint if pip is missing or the install errors, so the
+    update return code still reflects the script update itself."""
+    req = script_dir / "requirements.txt"
+    if not req.exists():
+        return
+    has_deps = any(
+        line.strip() and not line.lstrip().startswith("#")
+        for line in req.read_text(encoding="utf-8", errors="replace").splitlines()
+    )
+    if not has_deps:
+        return
+    print(f"[wigle-to-wdgwars] installing/refreshing deps from {req.name} "
+          f"(python -m pip install --upgrade -r requirements.txt)",
+          file=sys.stderr)
+    try:
+        r = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade",
+                            "-r", str(req)], timeout=300)
+    except FileNotFoundError:
+        print("[wigle-to-wdgwars] python not found to invoke pip; run "
+              "`python -m pip install -r requirements.txt` manually.",
+              file=sys.stderr)
+        return
+    except subprocess.TimeoutExpired:
+        print("[wigle-to-wdgwars] pip install timed out; run "
+              "`python -m pip install -r requirements.txt` manually.",
+              file=sys.stderr)
+        return
+    if r.returncode != 0:
+        print(f"[wigle-to-wdgwars] pip install exited {r.returncode}; if "
+              f"import errors below mention a missing module, run "
+              f"`python -m pip install -r requirements.txt` manually.",
+              file=sys.stderr)
+
+
+def _update_from_raw(script_dir: Path) -> int:
+    """Non-git fallback for --update: fetch wigle_to_wdgwars.py +
+    requirements.txt from raw GitHub and replace the local files
+    atomically, then refresh deps. Works for ZIP-downloaded installs."""
+    target = script_dir / "wigle_to_wdgwars.py"
+    raw_url = (f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/"
+               f"wigle_to_wdgwars.py")
+    print(f"[wigle-to-wdgwars] not a git checkout. Fetching latest "
+          f"wigle_to_wdgwars.py from {raw_url}", file=sys.stderr)
+    try:
+        req = urllib.request.Request(raw_url, headers={
+            "User-Agent": f"wigle-to-wdgwars/{__version__}"})
+        with urllib.request.urlopen(req, timeout=15, context=_SSL_CTX) as r:
+            new_text = r.read().decode("utf-8")
+    except Exception as e:
+        print(f"[wigle-to-wdgwars] download failed: {e}", file=sys.stderr)
+        print(f"[wigle-to-wdgwars] manual download: "
+              f"https://github.com/{GITHUB_REPO}/releases/latest",
+              file=sys.stderr)
+        return 1
+    try:
+        import ast
+        ast.parse(new_text)
+    except SyntaxError as e:
+        print(f"[wigle-to-wdgwars] downloaded file failed to parse, "
+              f"aborting: {e}", file=sys.stderr)
+        return 1
+    import re as _re
+    m = _re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']',
+                   new_text, _re.MULTILINE)
+    new_version = m.group(1) if m else "?"
+    if new_version == __version__:
+        print(f"[wigle-to-wdgwars] already on the latest (v{__version__}). "
+              f"Refreshing requirements.txt in case a pinned dep moved.",
+              file=sys.stderr)
+        _fetch_raw("requirements.txt", script_dir / "requirements.txt")
+        _pip_install_requirements(script_dir)
+        return 0
+    tmp = target.with_suffix(".py.new")
+    try:
+        tmp.write_text(new_text, encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError as e:
+        print(f"[wigle-to-wdgwars] couldn't write {target}: {e}",
+              file=sys.stderr)
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return 1
+    print(f"[wigle-to-wdgwars] updated v{__version__} to v{new_version}",
+          file=sys.stderr)
+    _fetch_raw("requirements.txt", script_dir / "requirements.txt")
+    _pip_install_requirements(script_dir)
+    print(f"[wigle-to-wdgwars] re-run wigle-to-wdgwars to pick up the new "
+          f"code (the current process is still running the old version).",
+          file=sys.stderr)
+    return 0
+
 
 # ───────────────────────────── Cooldown persistence ──────────────────────────
 
@@ -490,6 +687,48 @@ def _read_csv_bytes(csv_path: Path) -> bytes:
     if data[:2] == b"\x1f\x8b":
         data = gzip.decompress(data)
     return data
+
+
+# ───────────────────────────── Preview ──────────────────────────────────────
+
+def preview_csv(csv_path: Path, n: int = 6) -> int:
+    """Print the first n data rows of a WiGLE-1.6 CSV as JSON-lines to
+    stdout, then exit. Mirrors Heimdall + Muninn --preview.
+
+    WiGLE-1.6 format: line 1 is the WigleWifi banner, line 2 is the column
+    header (the one we use as keys), data rows follow. Gzip is decompressed
+    transparently so this works on both `.csv` and `.wiglecsv.gz`."""
+    import csv as _csv
+    try:
+        raw = _read_csv_bytes(csv_path)
+    except OSError as e:
+        print(f"[wigle] could not read {csv_path}: {e}", file=sys.stderr)
+        return 1
+    text = raw.decode("utf-8", errors="replace")
+    lines = text.splitlines()
+    if len(lines) < 2:
+        print(f"[wigle] {csv_path} is too short to be a WiGLE CSV "
+              f"(need banner + header + at least one row)", file=sys.stderr)
+        return 1
+    header_line = lines[1]
+    data_lines = lines[2:]
+    if not data_lines:
+        print(f"[wigle] {csv_path} has no data rows after the header",
+              file=sys.stderr)
+        return 1
+    reader = _csv.DictReader(
+        [header_line] + data_lines[:n],
+        skipinitialspace=False,
+    )
+    count = 0
+    for row in reader:
+        print(json.dumps(row, ensure_ascii=False))
+        count += 1
+        if count >= n:
+            break
+    print(f"[wigle] preview: showed {count} of {len(data_lines)} data rows. "
+          f"No upload performed.", file=sys.stderr)
+    return 0
 
 
 # ───────────────────────────── CSV upload path ───────────────────────────────
@@ -1300,6 +1539,7 @@ def cmd_unschedule() -> int:
 # ───────────────────────────── CLI ───────────────────────────────────────────
 
 def main() -> int:
+    global ENDPOINT
     ap = argparse.ArgumentParser(
         prog="wigle-to-wdgwars",
         description="Upload WiGLE-1.6 CSVs (and optionally aircraft JSON) to WDGoWars.",
@@ -1307,12 +1547,32 @@ def main() -> int:
     )
     ap.add_argument("csv", nargs="?",
                     help="path to a WiGLE-1.6 CSV (or .gz, gzip is auto-detected); "
-                         "omit with --whoami or --aircraft-json")
+                         "omit with --whoami, --aircraft-json, --preview, --update, "
+                         "--setup, or --schedule")
+    ap.add_argument("--update", action="store_true",
+                    help="pull the latest version of wigle-to-wdgwars (uses "
+                         "git pull if you cloned the repo, otherwise downloads "
+                         "wigle_to_wdgwars.py from GitHub)")
     ap.add_argument("--field", default="file",
                     help="multipart field name (default: file)")
     ap.add_argument("--key", help="API key (overrides $WDGWARS_API_KEY and key file)")
+    ap.add_argument("--api-url", metavar="URL",
+                    help=f"override the CSV upload endpoint (default: "
+                         f"{ENDPOINT}). Useful for staging hosts or local "
+                         f"mocks; aircraft JSON uploads still use the signed "
+                         f"endpoint at {SIGNED_ENDPOINT}.")
     ap.add_argument("--dry-run", action="store_true",
                     help="build the request but do not POST")
+    ap.add_argument("--preview", action="store_true",
+                    help="print the first 6 rows of the WiGLE CSV as JSON to "
+                         "stdout and exit. No upload, no network. Useful for "
+                         "confirming the parser sees what you expect before "
+                         "wiring into a schedule. Mirrors Heimdall + Muninn "
+                         "--preview for cross-tool consistency.")
+    ap.add_argument("-q", "--quiet", action="store_true",
+                    help="suppress informational banners (errors still print)")
+    ap.add_argument("--no-version-check", action="store_true",
+                    help="skip the daily GitHub release check entirely")
     ap.add_argument("--chunk-size", type=int, default=0,
                     help="split CSV into N-row chunks to dodge Cloudflare 524s (0=single POST). "
                          "10000 is a safe default for large uploads.")
@@ -1365,6 +1625,31 @@ def main() -> int:
     ap.add_argument("--version", action="version",
                     version=f"wigle-to-wdgwars {__version__}")
     args = ap.parse_args()
+
+    # --update is a top-level mode; runs before anything else.
+    if args.update:
+        return _run_update()
+
+    # --api-url overrides the CSV upload endpoint (the primary path).
+    # Aircraft JSON uploads still use the signed endpoint — override
+    # there belongs in Muninn, not wigle.
+    if args.api_url:
+        ENDPOINT = args.api_url
+
+    # Soft nudge: if a newer release is out, mention it (non-blocking,
+    # daily-cached). Skip in CI-shaped invocations.
+    if not args.quiet and not args.no_version_check:
+        newer = _check_for_update()
+        if newer:
+            print(f"[wigle-to-wdgwars] note: v{newer} is available "
+                  f"(you're on v{__version__}). Run `--update` to upgrade.",
+                  file=sys.stderr)
+
+    # --preview is a parser dry-run; needs the CSV path but no key.
+    if args.preview:
+        if not args.csv:
+            ap.error("--preview needs a CSV path")
+        return preview_csv(Path(args.csv))
 
     # Key management / scheduling modes — handle before requiring an input
     if args.setup:

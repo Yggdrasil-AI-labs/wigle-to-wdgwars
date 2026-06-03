@@ -316,9 +316,20 @@ For a hands-off scheduled push on Windows, see
 
 ### Updating
 
-To pick up a new release (which may bump the gungnir pin), pull the latest
-code AND re-run the pip install — `requirements.txt` is the source of truth
-for which gungnir commit goes with which release of this tool:
+The easiest path is `--update`, which does both steps for you:
+
+```bash
+./run.sh --update
+```
+
+That runs `git pull --ff-only` when this is a git checkout, otherwise
+fetches `wigle_to_wdgwars.py` and `requirements.txt` from raw GitHub
+atomically. Either way it then refreshes the venv deps, so a release
+that bumps the gungnir pin self-heals without you having to remember
+the second step.
+
+If you'd rather do it by hand (which is what older releases told you
+to do):
 
 ```bash
 git pull             # or: re-download the ZIP and overwrite the folder
@@ -564,9 +575,37 @@ before you try a long upload:
 ```bash
 #!/bin/sh
 set -e
-python3 /home/me/bin/wigle_to_wdgwars.py --whoami > /dev/null
-exec python3 /home/me/bin/wigle_to_wdgwars.py /home/me/wardrives/latest.csv --chunk-size 10000
+./run.sh --whoami > /dev/null
+exec ./run.sh /home/me/wardrives/latest.csv --chunk-size 10000
 ```
+
+### Parser preview
+
+Before you wire a CSV path into a schedule (or push something big you
+just got out of Kismet / hcxdumptool), it's worth confirming the parser
+sees what you expect. `--preview` does that without any network calls:
+
+```bash
+./run.sh --preview /path/to/your.wiglecsv
+```
+
+Prints the first 6 data rows as JSON to stdout, no upload, no key
+needed. Same shape as Heimdall's and Muninn's `--preview` so the
+mental model carries between feeders.
+
+### Pointing at a staging host
+
+`--api-url` overrides the CSV upload endpoint. Useful when you're
+testing against a local mock or staging server without flipping
+`/etc/hosts`:
+
+```bash
+./run.sh --api-url http://localhost:9999/api/upload-csv \
+         --dry-run /path/to/your.wiglecsv
+```
+
+Aircraft JSON uploads still use the signed `/endpoint/upload/` endpoint
+unchanged — if you need to redirect those, use Muninn's `--api-url`.
 
 ---
 
