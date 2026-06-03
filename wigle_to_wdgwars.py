@@ -34,7 +34,7 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 GITHUB_URL = "https://github.com/HiroAlleyCat/wigle-to-wdgwars"
 
 import argparse

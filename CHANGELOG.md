@@ -4,6 +4,44 @@ All notable changes to wigle-to-wdgwars are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-06-03 - Family-alignment housekeeping
+
+Patch release surfacing the lessons from the 2026-06-03 feeder-family
+alignment audit. No behavior changes for end users; safety nets and a
+gungnir-pin refresh that prevents tests from accidentally polluting a
+real WDGoWars account.
+
+### Added
+
+- Saved-key test guard (`tests/__init__.py`). Refuses to start the
+  test process if a real WDGoWars API key OR WiGLE token is present
+  at the canonical paths. Override with
+  `WIGLE_TEST_ALLOW_LIVE_KEY=1`. Complements the existing per-test
+  `_NetworkBlockedCase` urlopen-blocker — the two cover different
+  threat models (saved-key side vs network side).
+- `scripts/check_readme_examples.py` — README linter that catches
+  `python3 wigle_to_wdgwars.py ...` examples drifting outside the
+  venv-teaching blocks. Ported from Muninn after the 2026-06-01 Pi24
+  user hit `ModuleNotFoundError: No module named 'gungnir'`
+  following the README literally. Auto-detects the entrypoint script.
+
+### Changed
+
+- gungnir pin bumped `v0.1.1 → v0.1.2`. Picks up the Cloudflare-L7
+  bypass default URL (`/endpoint/upload/`) that ships in gungnir
+  v0.1.2 — every fresh `setup.sh` install now hits the rate-limit-safe
+  endpoint by default.
+- Six README code-block examples rewritten from `python3
+  wigle_to_wdgwars.py ...` to `./run.sh ...` so users following the
+  guide hit the venv-aware shim, not the system Python.
+
+### Deferred
+
+- `-q` / `--quiet` and `--no-version-check` parity flags from the
+  audit. Both require backing implementation (a print-suppression
+  pass and a version-check feature respectively); they're feature
+  work, not alignment work, so they're out of scope here.
+
 ## [1.2.0] - 2026-06-02 - Guided setup + auto-installed daily timer
 
 Brings wigle-to-wdgwars to parity with Muninn's hand-off-able install flow.

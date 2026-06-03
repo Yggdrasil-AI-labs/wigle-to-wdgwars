@@ -387,10 +387,10 @@ decompresses it for you, so just point it at whichever file you have:
 
 ```bash
 # plain CSV
-python3 wigle_to_wdgwars.py WigleWifi_20260523120000.csv --chunk-size 10000
+./run.sh WigleWifi_20260523120000.csv --chunk-size 10000
 
 # the gzipped export works too — no unzipping needed
-python3 wigle_to_wdgwars.py my-run.wiglecsv.gz --chunk-size 10000
+./run.sh my-run.wiglecsv.gz --chunk-size 10000
 ```
 
 If you want BLE included, make sure WiGLE's Bluetooth scanning is enabled
@@ -405,7 +405,7 @@ official conversion tool ships with it:
 kismetdb_to_wiglecsv \
     --in /var/log/kismet/Kismet-20260523.kismet \
     --out wardrive.csv
-python3 wigle_to_wdgwars.py wardrive.csv --chunk-size 10000
+./run.sh wardrive.csv --chunk-size 10000
 ```
 
 ### Option C — hcxdumptool + `hcxpcapngtool`
@@ -415,7 +415,7 @@ pcapng through `hcxpcapngtool --csv=...`:
 
 ```bash
 hcxpcapngtool --csv=wardrive.csv capture.pcapng
-python3 wigle_to_wdgwars.py wardrive.csv --chunk-size 10000
+./run.sh wardrive.csv --chunk-size 10000
 ```
 
 ### Option D — Roll your own
@@ -476,7 +476,7 @@ your latest WiGLE upload and pushes it to WDGoWars with no file involved at
 all. Swap the command in any recipe below for:
 
 ```
-python wigle_to_wdgwars.py --from-wigle --wigle-key WIGLE_TOKEN --key WDGWARS_KEY --chunk-size 10000
+./run.sh --from-wigle --wigle-key WIGLE_TOKEN --key WDGWARS_KEY --chunk-size 10000
 ```
 
 **The file-based version:** always export (or save) your WiGLE file to the
@@ -761,7 +761,7 @@ silently get zeroed.
 Pass a JSON file containing a top-level **list** of these record dicts:
 
 ```bash
-python3 wigle_to_wdgwars.py --aircraft-json aircraft.json
+./run.sh --aircraft-json aircraft.json
 ```
 
 If you want a full-featured ADS-B uploader that auto-detects 12 capture

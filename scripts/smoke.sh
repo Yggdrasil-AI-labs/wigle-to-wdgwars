@@ -2,11 +2,13 @@
 # Pre-release smoke test for wigle-to-wdgwars. Runs in CI and locally.
 #
 # Exercises the contained, deterministic parts of the install path:
-#   1. Throwaway venv + pinned-dep install (matches setup.sh flow).
-#   2. AST parse + import sanity.
-#   3. Unit tests (offline — every test mocks the network).
-#   4. wigle_to_wdgwars.py --version + --help sanity.
-#   5. --schedule headless renders a unit file with --dry-run + marker,
+#   1. README example linter (catches venv-form drift like the Muninn
+#      v2.0.8 footgun the Pi24 user hit).
+#   2. Throwaway venv + pinned-dep install (matches setup.sh flow).
+#   3. AST parse + import sanity.
+#   4. Unit tests (offline — every test mocks the network).
+#   5. wigle_to_wdgwars.py --version + --help sanity.
+#   6. --schedule headless renders a unit file with --dry-run + marker,
 #      in an XDG-isolated home. systemctl is allowed to fail (no live
 #      user manager in CI) — we only assert on the artifact.
 #
@@ -29,7 +31,16 @@ ok()   { printf "[smoke] ok: %s\n" "$*"; }
 
 cd "$REPO_DIR"
 
-# ─── 1. throwaway venv + pinned deps ───
+# ─── 1. README example linter (stdlib-only, runs without deps) ───
+say "linting README examples..."
+if python3 scripts/check_readme_examples.py README.md > "$TMP_DIR/lint.log" 2>&1; then
+    ok "README clean"
+else
+    cat "$TMP_DIR/lint.log" >&2
+    fail "README linter"
+fi
+
+# ─── 2. throwaway venv + pinned deps ───
 say "creating throwaway venv at $TMP_DIR/venv..."
 if ! python3 -m venv "$TMP_DIR/venv" > "$TMP_DIR/venv.log" 2>&1; then
     cat "$TMP_DIR/venv.log" >&2
