@@ -34,11 +34,12 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 GITHUB_REPO = "HiroAlleyCat/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
 import argparse
+import collections
 import gzip
 import json
 import logging
@@ -790,6 +791,27 @@ def _split_csv(csv_path: Path, chunk_rows: int) -> list[bytes]:
     return _split_bytes(_read_csv_bytes(csv_path), chunk_rows)
 
 
+PAYLOAD_TOO_LARGE_ERROR = "payload-too-large"
+
+
+def _halve_chunk(chunk_bytes: bytes) -> tuple[bytes, bytes] | None:
+    """Bisect a WiGLE CSV chunk into two row-count halves, header preserved
+    on each. Returns None if the chunk has fewer than 2 data rows (cannot
+    bisect further). Used to react to LOCOSP's 15 MB upload cap (2026-06-05):
+    on HTTP 413 the offending chunk is halved and both halves are retried.
+    """
+    raw = chunk_bytes.decode("utf-8").splitlines(keepends=False)
+    if len(raw) < 4:
+        return None
+    h1, h2, *data_rows = raw
+    mid = len(data_rows) // 2
+    if mid < 1:
+        return None
+    left = (h1 + "\n" + h2 + "\n" + "\n".join(data_rows[:mid]) + "\n").encode("utf-8")
+    right = (h1 + "\n" + h2 + "\n" + "\n".join(data_rows[mid:]) + "\n").encode("utf-8")
+    return left, right
+
+
 def _aggregate(payloads: list[dict]) -> dict:
     """Merge per-chunk response envelopes into one summary."""
     keys = ("imported", "captured", "updated", "duplicates", "no_gps", "bad_rows", "merged_samples")
@@ -813,7 +835,14 @@ def _aggregate(payloads: list[dict]) -> dict:
 
 def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
                    dry_run: bool, cooldown_sec: float) -> int:
-    """POST pre-split CSV chunks to WDGoWars. Returns shell exit code (0 ok)."""
+    """POST pre-split CSV chunks to WDGoWars. Returns shell exit code (0 ok).
+
+    Resilient to HTTP 413 from LOCOSP's 15 MB upload cap (2026-06-05): any
+    chunk that comes back with `{error: payload-too-large, max_bytes, received}`
+    is bisected and both halves are pushed back onto the work queue. Recursion
+    bottoms out when a chunk is one row and still 413 (recorded as a failure,
+    other chunks continue).
+    """
     total_kb = sum(len(c) for c in chunks) / 1024
     print(
         f"[wdgwars] POST {ENDPOINT} field={field} file={name} "
@@ -823,18 +852,50 @@ def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
     if dry_run:
         print("[wdgwars] dry-run: not sending", file=sys.stderr)
         return 0
+    queue: collections.deque[bytes] = collections.deque(chunks)
     payloads: list[dict] = []
-    for idx, body in enumerate(chunks, 1):
+    attempt = 0
+    splits = 0
+    while queue:
+        attempt += 1
+        body = queue.popleft()
         try:
             status, raw, dur = _post_one(body, name, key, field)
         except urllib.error.URLError as e:
-            sys.exit(f"[wdgwars] network error on chunk {idx}/{len(chunks)}: {e}")
+            sys.exit(f"[wdgwars] network error on attempt {attempt}: {e}")
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
             data = {"ok": False, "error": "non-json response", "raw": raw[:300]}
+
+        if status == 413 and data.get("error") == PAYLOAD_TOO_LARGE_ERROR:
+            halves = _halve_chunk(body)
+            max_b = data.get("max_bytes")
+            recv = data.get("received")
+            if halves is None:
+                print(
+                    f"[wdgwars] attempt {attempt} HTTP 413 with 1 row, cannot "
+                    f"bisect further (max_bytes={max_b} received={recv}). "
+                    f"Recording as failure, continuing.",
+                    file=sys.stderr,
+                )
+                payloads.append(data)
+                continue
+            left, right = halves
+            queue.appendleft(right)
+            queue.appendleft(left)
+            splits += 1
+            print(
+                f"[wdgwars] attempt {attempt} HTTP 413 "
+                f"(max_bytes={max_b} received={recv}); bisecting and retrying "
+                f"({len(left) // 1024}+{len(right) // 1024} KB halves)",
+                file=sys.stderr,
+            )
+            time.sleep(cooldown_sec)
+            continue
+
         print(
-            f"[wdgwars] chunk {idx}/{len(chunks)} HTTP {status} in {dur:.1f}s "
+            f"[wdgwars] attempt {attempt} HTTP {status} in {dur:.1f}s "
             f"imported={data.get('imported')} dup={data.get('duplicates')} "
             f"merged={data.get('merged_samples')} bad={data.get('bad_rows')}",
             file=sys.stderr,
@@ -847,9 +908,14 @@ def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
             print(f"[wdgwars] 429 cooldown, sleeping {wait:.0f}s", file=sys.stderr)
             _cooldown_record(wait)
             time.sleep(wait)
-        elif idx < len(chunks):
+        elif queue:
             time.sleep(cooldown_sec)
-    if len(chunks) == 1:
+    if splits:
+        print(
+            f"[wdgwars] auto-split {splits} chunk(s) on 413 over the run",
+            file=sys.stderr,
+        )
+    if len(payloads) == 1:
         print(json.dumps(payloads[0]))
         return 0 if payloads[0].get("ok") else 1
     agg = _aggregate(payloads)
@@ -1574,8 +1640,11 @@ def main() -> int:
     ap.add_argument("--no-version-check", action="store_true",
                     help="skip the daily GitHub release check entirely")
     ap.add_argument("--chunk-size", type=int, default=0,
-                    help="split CSV into N-row chunks to dodge Cloudflare 524s (0=single POST). "
-                         "10000 is a safe default for large uploads.")
+                    help="proactively split CSV into N-row chunks (0=single POST). "
+                         "10000 is a safe default for large uploads. The tool also "
+                         "reacts to LOCOSP's 15 MB upload cap (HTTP 413 envelope) "
+                         "by bisecting any over-cap chunk automatically, so this "
+                         "flag is mostly belt-and-suspenders.")
     ap.add_argument("--chunk-cooldown", type=float, default=5.0,
                     help="seconds to sleep between chunks (default: 5)")
     ap.add_argument("--whoami", action="store_true",

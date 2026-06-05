@@ -716,6 +716,7 @@ server treats it as a valid file.
 | 400 | `{"error":"Invalid data format"}` | Most likely you POSTed a CSV to `/api/upload` (no `-csv` suffix). Wrong endpoint, not a malformed file. |
 | 401 | `{"error":"Invalid API key"}` | Bad/expired key, or you used `Authorization: Bearer …` instead of `X-API-Key:`. |
 | 429 | `{"error":"Another upload is already being processed …","retry_after":N}` | Per-account queue. Wait `retry_after` seconds. |
+| 413 | `{"error":"payload-too-large","max_bytes":15728640,"received":N,...}` | Body exceeded the 15 MB hosting cap LOCOSP added 2026-06-05. The client auto-bisects the offending chunk and retries both halves — no flag needed. |
 | 524 | (HTML from Cloudflare) | Origin timed out. Chunk smaller. Rows are still ingesting on the origin. |
 
 ### WiGLE API (the `--from-wigle` pull side)

@@ -4,6 +4,46 @@ All notable changes to wigle-to-wdgwars are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-06-05 - 15 MB upload cap (HTTP 413 auto-bisect)
+
+LOCOSP rolled out a temporary 15 MB body cap on every wdgwars.pl upload
+endpoint on 2026-06-05. The cap is a workaround for the CloudLinux LVE
+on the shared host killing the PHP worker mid-buffer on bodies above
+roughly 20 MB. Until the planned host migration lands (~2 weeks), the
+server returns a structured 413 envelope with `max_bytes` + `received`
+instead of a generic 500.
+
+This release reacts to that envelope automatically. The proactive
+`--chunk-size` flag is unchanged and remains the recommended path for
+scheduled cron uploads, but standalone CLI runs are now resilient too.
+
+### Added
+
+- HTTP 413 auto-bisect. When a chunk comes back with
+  `{error: payload-too-large, max_bytes, received}`, the offending
+  chunk is split in half (row-count, header preserved on both halves)
+  and both halves are pushed back onto the work queue. Recursion
+  bottoms out cleanly when a chunk is one row and still 413 (recorded
+  as a failure, other chunks continue).
+- `_halve_chunk(bytes) -> tuple[bytes, bytes] | None` helper. Public
+  enough for sibling tools (Muninn, Heimdall) to vendor if they want
+  the same behavior; semantics match `_split_bytes`.
+- `tests/test_413_autosplit.py`: 7 tests covering the halver, single-
+  bisect success, double-bisect when first halves still oversize,
+  one-row-still-413 failure recording, and forward-compat for a
+  future `max_bytes` change (no hard-coded 15 MB constant).
+
+### Changed
+
+- `_upload_chunks` reworked from a fixed-list `for` loop to a
+  `collections.deque` so the bisect path can push retries back onto
+  the front of the queue without breaking the iteration counter.
+  Behavior on 200/429/non-JSON paths is byte-for-byte identical to
+  v1.3.0.
+- `--chunk-size --help` text now describes the auto-bisect behavior
+  so the flag's role is clear: proactive splitting to avoid the
+  Cloudflare 524 timeout window, with the 413 path as a safety net.
+
 ## [1.3.0] - 2026-06-03 - Family-parity catch-up
 
 Closes the flag-surface gaps between wigle-to-wdgwars and its sibling
