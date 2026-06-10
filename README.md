@@ -258,6 +258,38 @@ By default it pulls your single most-recent upload. Use `--wigle-latest N` to
 push the last N uploads instead. This is the mode the auto-installed
 [timer](#running-on-a-schedule-timer) uses for a fully hands-off pipeline.
 
+### Only the last week (default)
+
+Every upload path applies a **trailing-window gate** to the CSV before
+chunking: rows whose `FirstSeen` falls outside the window are dropped. The
+default is `7d`, set with `--since DURATION`:
+
+```bash
+.venv/bin/python wigle_to_wdgwars.py my-wardrive.wiglecsv.gz \
+    --key YOUR_WDGWARS_API_KEY --chunk-size 10000
+# → [wigle] my-wardrive.wiglecsv.gz: --since 7d kept 1842/204311 rows
+#   (dropped 202469 old, 0 unparseable)
+```
+
+This stops a cron job from re-pushing years of WiGLE history every tick.
+WDGoWars already deduped those rows on the server; the trip wastes the
+LOCOSP daily cap and the Cloudflare per-IP budget. The window also runs on
+`--from-wigle`, so a stale-but-large WiGLE transaction won't blow the cap.
+
+| Flag | Behavior |
+| ---- | -------- |
+| `--since 7d` *(default)* | Keep rows where `FirstSeen` is within the last 7 days. |
+| `--since 24h` | Last 24 hours. Suffixes: `s`, `m`, `h`, `d`, `w`. A bare integer is days. |
+| `--since 0` | Disable the gate. |
+| `--all-time` | Disable the gate (named flag, same effect). |
+
+If a CSV's window is empty (zero kept rows), the tool **skips the upload
+entirely** and returns 0 (no empty POST is sent). The 2-line WiGLE header
+is preserved on the filtered bytes either way.
+
+If the CSV has no `FirstSeen` column (atypical, older or custom exports),
+the gate logs the situation and passes the bytes through unchanged.
+
 ---
 
 ## Installing

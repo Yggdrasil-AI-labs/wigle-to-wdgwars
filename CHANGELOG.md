@@ -4,6 +4,43 @@ All notable changes to wigle-to-wdgwars are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-06-09 - Trailing-window gate (--since, default 7d)
+
+Stops cron jobs from re-uploading the entire WiGLE history every tick.
+Every upload path now applies a row-level filter to the CSV before
+chunking: only rows whose `FirstSeen` falls within the trailing window
+make it through. The default window is 7 days, which matches a typical
+daily-cron cadence with one safety lap of overlap. WDGoWars already
+deduped older rows on the server, so re-pushing them was wasted budget
+on the LOCOSP daily cap and the Cloudflare per-IP `/api/*` quota.
+
+### Added
+
+- `--since DURATION` flag (default `7d`). Accepts `Ns`, `Nm`, `Nh`,
+  `Nd`, `Nw`; a bare integer is days. Applies to file uploads,
+  `--from-wigle` pulls, and `upload_csv_bytes` library callers.
+- `--all-time` flag. Disables the gate; same effect as `--since 0`
+  but easier to read in a cron line.
+- `parse_duration(str) -> int` and `filter_csv_since(bytes, datetime)`
+  public helpers. Sibling tools (Muninn, Heimdall) can vendor them if
+  they want the same gate; semantics match the wider feeder family.
+- `tests/test_since_filter.py` — 14 tests covering the duration
+  parser, the row filter (kept/dropped accounting, header
+  preservation, missing-FirstSeen passthrough, unparseable rows), the
+  apply helper, and the upload-path skip when the window is empty.
+
+### Changed
+
+- `upload_csv`, `upload_csv_bytes`, and
+  `pull_from_wigle_push_to_wdgwars` gained a `since_seconds=` kwarg.
+  Default is `0` for backwards-compat with library callers; the CLI
+  always passes a value (7d unless overridden).
+- When the window filters every row out, the upload path returns 0
+  WITHOUT calling `_upload_chunks` (no empty POST hits LOCOSP).
+- WiGLE-1.6 banner + column header are preserved on filtered bytes
+  even when zero data rows remain, so downstream code that sniffs the
+  format keeps working.
+
 ## [1.4.0] - 2026-06-05 - 15 MB upload cap (HTTP 413 auto-bisect)
 
 LOCOSP rolled out a temporary 15 MB body cap on every wdgwars.pl upload
