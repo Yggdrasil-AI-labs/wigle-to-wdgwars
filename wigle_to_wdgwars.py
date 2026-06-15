@@ -34,7 +34,7 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.5.1"
+__version__ = "1.6.0"
 GITHUB_REPO = "HiroAlleyCat/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
@@ -102,6 +102,7 @@ DEFAULT_KEY_FILE = CONFIG_DIR / "wdgwars.key"
 WIGLE_KEY_FILE = CONFIG_DIR / "wigle.key"
 COOLDOWN_FILE = CONFIG_DIR / "cooldown.json"
 HWM_FILE = CONFIG_DIR / "hwm.json"
+PROCESSED_FILE = CONFIG_DIR / "processed-transids.json"
 
 # ───────────────────────────── Self-update / version check ──────────────────
 #
@@ -1264,22 +1265,64 @@ def wigle_download_csv(token: str, transid: str) -> bytes:
     sys.exit(f"[wigle] CSV download for {transid} timed out after retries: {last_err}")
 
 
+def _load_processed_transids() -> set:
+    """Transids already pushed to WDGoWars (persisted in PROCESSED_FILE).
+
+    Lets the daily pull skip re-downloading uploads it has already sent.
+    WiGLE regenerates each CSV server-side (minutes for a big upload), so
+    re-pulling one that's already on WDGoWars is pure waste."""
+    try:
+        data = json.loads(PROCESSED_FILE.read_text())
+        return set(data.get("processed", []))
+    except Exception:
+        return set()
+
+
+def _mark_transid_processed(transid: str) -> None:
+    """Record a transid as successfully pushed. Best-effort; never raises."""
+    try:
+        seen = _load_processed_transids()
+        seen.add(transid)
+        PROCESSED_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PROCESSED_FILE.write_text(json.dumps({"processed": sorted(seen)}, indent=2))
+    except Exception as e:
+        print(f"[wigle] warning: could not record {transid} as processed: {e}",
+              file=sys.stderr)
+
+
 def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
                                     latest: int, dry_run: bool, chunk_rows: int,
                                     cooldown_sec: float,
-                                    since_seconds: int = 0) -> int:
+                                    since_seconds: int = 0,
+                                    reprocess: bool = False) -> int:
     """Pull your latest WiGLE upload(s) and push each to WDGoWars.
 
     ``since_seconds > 0`` drops rows older than the cutoff from each
-    downloaded WiGLE CSV before uploading."""
+    downloaded WiGLE CSV before uploading.
+
+    Uploads already recorded in PROCESSED_FILE are skipped (no re-download)
+    unless ``reprocess`` is set. A transid is recorded only after a real
+    (non-dry-run) successful push, so failed uploads and dry-runs are retried."""
     transids = wigle_list_transactions(wigle_token, latest)
     if not transids:
         print("[wigle] no uploads found on your account", file=sys.stderr)
         return 0
-    print(f"[wigle] pulling {len(transids)} most-recent upload(s): "
-          f"{', '.join(transids)}", file=sys.stderr)
+
+    processed = set() if reprocess else _load_processed_transids()
+    pending = [t for t in transids if t not in processed]
+    skipped = [t for t in transids if t in processed]
+    if skipped:
+        print(f"[wigle] skipping {len(skipped)} already-processed upload(s): "
+              f"{', '.join(skipped)} (use --reprocess to force)", file=sys.stderr)
+    if not pending:
+        print("[wigle] nothing new to pull — all recent uploads already processed",
+              file=sys.stderr)
+        return 0
+
+    print(f"[wigle] pulling {len(pending)} upload(s): "
+          f"{', '.join(pending)}", file=sys.stderr)
     rc = 0
-    for tid in transids:
+    for tid in pending:
         csv_bytes = wigle_download_csv(wigle_token, tid)
         print(f"[wigle] {tid}: {len(csv_bytes) / 1024:.1f} KB -> WDGoWars",
               file=sys.stderr)
@@ -1287,6 +1330,8 @@ def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
                              dry_run, chunk_rows, cooldown_sec,
                              since_seconds=since_seconds)
         rc = rc or r
+        if r == 0 and not dry_run:
+            _mark_transid_processed(tid)
     return rc
 
 
@@ -1843,6 +1888,9 @@ def main() -> int:
     ap.add_argument("--wigle-latest", type=int, default=1, metavar="N",
                     help="with --from-wigle, how many most-recent WiGLE uploads to pull "
                          "(default: 1)")
+    ap.add_argument("--reprocess", action="store_true",
+                    help="with --from-wigle, re-pull uploads even if already recorded "
+                         "as processed (ignores the processed-transids state file)")
     ap.add_argument("--setup", action="store_true",
                     help="interactive first-time setup — prompts for your "
                          "WDGoWars and WiGLE keys, validates them, saves them "
@@ -1944,7 +1992,7 @@ def main() -> int:
         return pull_from_wigle_push_to_wdgwars(
             wigle_token, key, args.field, args.wigle_latest,
             args.dry_run, args.chunk_size, args.chunk_cooldown,
-            since_seconds=since_seconds)
+            since_seconds=since_seconds, reprocess=args.reprocess)
 
     if args.aircraft_json:
         return upload_aircraft_json(Path(args.aircraft_json), key,

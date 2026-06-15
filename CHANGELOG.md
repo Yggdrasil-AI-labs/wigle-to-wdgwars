@@ -4,6 +4,26 @@ All notable changes to wigle-to-wdgwars are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-06-15 - Skip already-processed uploads
+
+Stops the daily `--from-wigle` pull from re-downloading uploads it has
+already pushed. WiGLE regenerates each CSV server-side (minutes for a
+large upload), so re-pulling one that's already on WDGoWars wasted both
+time and quota every night.
+
+### Added
+
+- Persistent processed-transid state at
+  `~/.config/wigle-to-wdgwars/processed-transids.json`. Each WiGLE upload
+  is recorded only after a real (non-dry-run) successful push, so failed
+  uploads and dry-runs are retried.
+- `--reprocess` flag to re-pull uploads even if already recorded.
+
+### Changed
+
+- `--from-wigle` now skips already-processed uploads before downloading;
+  if nothing is new it exits early without hitting WiGLE's slow CSV export.
+
 ## [1.5.1] - 2026-06-15 - Survive slow WiGLE CSV exports
 
 ### Fixed
