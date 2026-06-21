@@ -4,6 +4,33 @@ All notable changes to wigle-to-wdgwars are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] - CI quality gates + security review
+
+Tooling and CI only — no change to `wigle_to_wdgwars.py` behavior, so no
+version bump.
+
+Brings wigle-to-wdgwars onto the same gated CI pipeline as the sibling
+adsb-to-wdgwars (Muninn): pytest + coverage → SonarCloud quality gate → Snyk
+dependency scan → gated release-artifact build. The `sonarcloud` / `snyk`
+jobs stay red until the repo is imported into SonarCloud and the
+`SONAR_TOKEN` / `SNYK_TOKEN` Actions secrets are added (see CI.md); the test
+and coverage stage is independent and passes on its own.
+
+A review against the SonarCloud SAST finding classes found nothing to
+remediate — the scheduler arguments are shell-quoted, secrets never reach the
+command line, and the secret-file writer refuses symlinks and uses mode 600.
+See SECURITY-FINDINGS.md.
+
+### Added
+
+- `.github/workflows/ci-quality-gates.yml` — gated quality + security pipeline.
+- `sonar-project.properties`, `requirements-dev.txt`, `pyproject.toml`
+  (pytest + coverage config with a regression floor), and `CI.md`.
+- `tests/test_security.py` — regression tests locking in the existing
+  defenses (shell-quoting, no-secrets-in-argv, safe secret-file writes).
+- `SECURITY-FINDINGS.md` — the security review write-up; pointer added to
+  `SECURITY.md`.
+
 ## [1.6.0] - 2026-06-15 - Skip already-processed uploads
 
 Stops the daily `--from-wigle` pull from re-downloading uploads it has
@@ -71,7 +98,6 @@ on the LOCOSP daily cap and the Cloudflare per-IP `/api/*` quota.
 - WiGLE-1.6 banner + column header are preserved on filtered bytes
   even when zero data rows remain, so downstream code that sniffs the
   format keeps working.
-
 ## [1.4.0] - 2026-06-05 - 15 MB upload cap (HTTP 413 auto-bisect)
 
 LOCOSP rolled out a temporary 15 MB body cap on every wdgwars.pl upload

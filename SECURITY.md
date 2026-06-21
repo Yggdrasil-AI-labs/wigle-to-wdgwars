@@ -98,6 +98,16 @@ envelope  = {"data": data_b64, "nonce": nonce, "sig": sig}
 (Python default) are load-bearing — different whitespace or non-ASCII
 handling produces a different signature.
 
+## Static-analysis review
+
+A review of this tool against the SonarCloud SAST finding classes (path
+traversal, command/argument injection, insecure temp use, unsafe DB opens)
+found nothing to remediate — the scheduler arguments are shell-quoted, secrets
+never reach the command line, and the secret-file writer refuses symlinks and
+uses mode 600. The full write-up is in
+[SECURITY-FINDINGS.md](SECURITY-FINDINGS.md); the posture is locked by
+`tests/test_security.py`.
+
 ## Reporting issues
 
 Open a GitHub issue, or DM the maintainer on the WDGoWars community
