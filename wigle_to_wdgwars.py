@@ -34,7 +34,7 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 GITHUB_REPO = "HiroAlleyCat/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
@@ -1031,6 +1031,25 @@ def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
                 file=sys.stderr,
             )
             time.sleep(cooldown_sec)
+            continue
+
+        if status == 409 and data.get("error") == "duplicate_upload":
+            # Server already holds this exact file (byte-for-byte). An
+            # idempotent re-send (same --since window each cron tick) is
+            # not a failure: the rows are already on the server, so do
+            # not surface a non-zero exit that would trip alerting.
+            dup_at = data.get("duplicate_at")
+            print(
+                f"[wdgwars] attempt {attempt} HTTP 409 duplicate_upload "
+                f"(already uploaded {dup_at}); treating as ok",
+                file=sys.stderr,
+            )
+            data = dict(data)
+            data["ok"] = True
+            data["duplicate_upload"] = True
+            payloads.append(data)
+            if queue:
+                time.sleep(cooldown_sec)
             continue
 
         print(
