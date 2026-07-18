@@ -30,6 +30,22 @@ See SECURITY-FINDINGS.md.
   defenses (shell-quoting, no-secrets-in-argv, safe secret-file writes).
 - `SECURITY-FINDINGS.md` — the security review write-up; pointer added to
   `SECURITY.md`.
+- `tests/test_409_duplicate.py` — regression tests for the v1.6.1
+  duplicate_upload handling (exit 0, high-water mark untouched, other 409
+  bodies still fail). Clears the SonarCloud new-code coverage condition the
+  v1.6.1 commit tripped.
+
+## [1.6.1] - 2026-07-14 - Treat duplicate_upload 409 as success
+
+### Fixed
+
+- An idempotent re-send of the same `--since` window (e.g. an hourly cron
+  pushing a byte-identical CSV) got HTTP 409 `{error: duplicate_upload}` from
+  the server and was surfaced as a non-zero exit, tripping downstream
+  alerting even though the rows were already on the server. That specific
+  envelope is now treated as a benign success (`ok: true`,
+  `duplicate_upload: true` in the result payload); any other 409 body still
+  fails. The upload high-water mark is not advanced by a duplicate.
 
 ## [1.6.0] - 2026-06-15 - Skip already-processed uploads
 
