@@ -31,7 +31,7 @@ fi
 VENV_PY="$VENV_DIR/bin/python"
 
 echo "[1/3] Refreshing requirements.txt from GitHub..."
-"$VENV_PY" -c "import urllib.request as u; u.urlretrieve('https://raw.githubusercontent.com/HiroAlleyCat/wigle-to-wdgwars/main/requirements.txt', 'requirements.txt')"
+"$VENV_PY" -c "import urllib.request as u; u.urlretrieve('https://raw.githubusercontent.com/Yggdrasil-AI-labs/wigle-to-wdgwars/main/requirements.txt', 'requirements.txt')"
 
 echo
 echo "[2/3] Installing/refreshing dependencies..."
@@ -39,7 +39,7 @@ echo "[2/3] Installing/refreshing dependencies..."
 
 echo
 echo "[3/3] Refreshing wigle_to_wdgwars.py from GitHub..."
-"$VENV_PY" -c "import urllib.request as u; u.urlretrieve('https://raw.githubusercontent.com/HiroAlleyCat/wigle-to-wdgwars/main/wigle_to_wdgwars.py', 'wigle_to_wdgwars.py')"
+"$VENV_PY" -c "import urllib.request as u; u.urlretrieve('https://raw.githubusercontent.com/Yggdrasil-AI-labs/wigle-to-wdgwars/main/wigle_to_wdgwars.py', 'wigle_to_wdgwars.py')"
 "$VENV_PY" wigle_to_wdgwars.py --version
 
 if [ -t 0 ]; then

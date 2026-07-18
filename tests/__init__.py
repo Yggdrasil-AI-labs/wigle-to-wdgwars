@@ -12,7 +12,7 @@ To run tests with a real key present (sacrificial account on purpose):
     WIGLE_TEST_ALLOW_LIVE_KEY=1 python -m unittest discover tests/
 
 The guard runs once at import time and only flags the canonical key
-paths. Env vars (WDGWARS_API_KEY / WIGLE_API_TOKEN) and CLI flags are
+paths. Env vars (WDGWARS_API_KEY / WIGLE_API_KEY) and CLI flags are
 out of scope — those require explicit caller intent.
 
 Note: this is a saved-key guard, not a network blocker. test_setup.py

@@ -34,8 +34,8 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.6.1"
-GITHUB_REPO = "HiroAlleyCat/wigle-to-wdgwars"
+__version__ = "1.6.2"
+GITHUB_REPO = "Yggdrasil-AI-labs/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
 import argparse
@@ -200,6 +200,37 @@ def _fetch_raw(path: str, dest: Path) -> bool:
     return True
 
 
+WRAPPER_SCRIPTS = ("run.sh", "run.bat", "setup.sh", "setup.bat",
+                   "update.sh", "update.bat")
+
+
+def _refresh_wrappers(script_dir: Path) -> None:
+    """Refresh the shell/batch wrapper scripts next to the main script.
+
+    ZIP-installed users only receive wrapper fixes through --update (git
+    checkouts get them via `git pull`), so the raw-update path must ship
+    them too. The list is hard-coded rather than fetched from a remote
+    manifest so the update path can never be steered into writing
+    arbitrary filenames. A wrapper that fails to download is skipped
+    with a warning — the main-script update is never rolled back over a
+    wrapper. Wrappers the user deleted are respected and not re-planted.
+    """
+    for name in WRAPPER_SCRIPTS:
+        dest = script_dir / name
+        if not dest.exists():
+            continue
+        if not _fetch_raw(name, dest):
+            print(f"[wigle-to-wdgwars] wrapper {name} not refreshed; "
+                  f"re-download the release archive if it stays broken.",
+                  file=sys.stderr)
+            continue
+        if os.name == "posix" and name.endswith(".sh"):
+            try:
+                os.chmod(dest, 0o755)
+            except OSError:
+                pass
+
+
 def _pip_install_requirements(script_dir: Path) -> None:
     """Best-effort `python -m pip install -r requirements.txt` against the
     interpreter currently running wigle-to-wdgwars. Never fails the caller —
@@ -270,9 +301,11 @@ def _update_from_raw(script_dir: Path) -> int:
     new_version = m.group(1) if m else "?"
     if new_version == __version__:
         print(f"[wigle-to-wdgwars] already on the latest (v{__version__}). "
-              f"Refreshing requirements.txt in case a pinned dep moved.",
+              f"Refreshing requirements.txt and wrappers in case a pinned "
+              f"dep or wrapper fix moved.",
               file=sys.stderr)
         _fetch_raw("requirements.txt", script_dir / "requirements.txt")
+        _refresh_wrappers(script_dir)
         _pip_install_requirements(script_dir)
         return 0
     tmp = target.with_suffix(".py.new")
@@ -290,6 +323,7 @@ def _update_from_raw(script_dir: Path) -> int:
     print(f"[wigle-to-wdgwars] updated v{__version__} to v{new_version}",
           file=sys.stderr)
     _fetch_raw("requirements.txt", script_dir / "requirements.txt")
+    _refresh_wrappers(script_dir)
     _pip_install_requirements(script_dir)
     print(f"[wigle-to-wdgwars] re-run wigle-to-wdgwars to pick up the new "
           f"code (the current process is still running the old version).",

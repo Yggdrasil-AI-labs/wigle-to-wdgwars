@@ -13,7 +13,7 @@ if errorlevel 1 (
 )
 
 echo [1/3] Refreshing requirements.txt from GitHub...
-python -c "import urllib.request as u; u.urlretrieve('https://raw.githubusercontent.com/HiroAlleyCat/wigle-to-wdgwars/main/requirements.txt', r'%~dp0requirements.txt')"
+python -c "import urllib.request as u; u.urlretrieve('https://raw.githubusercontent.com/Yggdrasil-AI-labs/wigle-to-wdgwars/main/requirements.txt', r'%~dp0requirements.txt')"
 if errorlevel 1 (
     echo.
     echo Could not fetch requirements.txt. Check internet connection and
@@ -35,7 +35,7 @@ if errorlevel 1 (
 
 echo.
 echo [3/3] Refreshing wigle_to_wdgwars.py from GitHub...
-python -c "import urllib.request as u; u.urlretrieve('https://raw.githubusercontent.com/HiroAlleyCat/wigle-to-wdgwars/main/wigle_to_wdgwars.py', r'%~dp0wigle_to_wdgwars.py')"
+python -c "import urllib.request as u; u.urlretrieve('https://raw.githubusercontent.com/Yggdrasil-AI-labs/wigle-to-wdgwars/main/wigle_to_wdgwars.py', r'%~dp0wigle_to_wdgwars.py')"
 python "%~dp0wigle_to_wdgwars.py" --version
 
 :done

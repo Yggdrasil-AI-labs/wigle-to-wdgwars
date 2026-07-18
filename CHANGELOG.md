@@ -4,10 +4,40 @@ All notable changes to wigle-to-wdgwars are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] - CI quality gates + security review
+## [1.6.2] - 2026-07-18 - Wrapper-refreshing --update + org migration
 
-Tooling and CI only — no change to `wigle_to_wdgwars.py` behavior, so no
-version bump.
+### Fixed
+
+- **`--update` now refreshes the six wrapper scripts** (`run`/`setup`/
+  `update` `.sh`/`.bat`) on the raw-download (ZIP install) path, closing
+  the family bug where a fix living in a wrapper could never reach
+  ZIP-installed users through self-update (they were told "you are
+  already on the latest" while keeping broken wrappers). The list is
+  hard-coded — not a remote manifest — so the update path can never be
+  steered into writing arbitrary filenames. Wrapper download failures
+  warn and continue (the main-script update is never rolled back over a
+  wrapper); deleted wrappers are respected and not re-planted; `.sh`
+  wrappers get their exec bit restored on POSIX.
+- **Org migration completed in code**: `GITHUB_REPO` (drives `--update`,
+  the daily version check, and the User-Agent) and every raw-GitHub URL
+  in the wrapper scripts now point at `Yggdrasil-AI-labs` instead of
+  relying on GitHub's rename redirect from the old `HiroAlleyCat` owner.
+
+### Changed
+
+- gungnir pin bumped `v0.1.2 → v0.1.3` (structured HTTP 413 handling on
+  the signed aircraft path; no API change), and the pin URL moved to the
+  Yggdrasil-AI-labs org. The stale "Pinned to v0.1.1" comment in
+  `requirements.txt` is fixed.
+- README documents the 409 `duplicate_upload` response in the common
+  error table; the tests/__init__.py docstring names the real WiGLE env
+  var (`WIGLE_API_KEY`, not `WIGLE_API_TOKEN`).
+
+### CI quality gates + security review (landed unversioned, ships in this tag)
+
+Tooling and CI only — originally held in an Unreleased section because it
+changed no `wigle_to_wdgwars.py` behavior; folded into 1.6.2 now that a
+release is being cut.
 
 Brings wigle-to-wdgwars onto the same gated CI pipeline as the sibling
 adsb-to-wdgwars (Muninn): pytest + coverage → SonarCloud quality gate → Snyk
