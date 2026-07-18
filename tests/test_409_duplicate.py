@@ -15,24 +15,8 @@ import unittest
 from unittest import mock
 
 import wigle_to_wdgwars as w2w
-
-
-HEADER = (
-    b"WigleWifi-1.6,appRelease=2.74,model=Pixel\n"
-    b"MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,"
-    b"CurrentLongitude,AltitudeMeters,AccuracyMeters,Type\n"
-)
-
-
-def _row(mac_suffix: int) -> bytes:
-    return (
-        f"aa:bb:cc:00:00:{mac_suffix:02x},Net{mac_suffix},[WPA2],"
-        f"2026-06-05 10:00:00,6,-65,41.46,-82.18,200,5,WIFI\n"
-    ).encode()
-
-
-def _csv_with_rows(n: int) -> bytes:
-    return HEADER + b"".join(_row(i) for i in range(n))
+from tests._helpers import csv_with_rows as _csv_with_rows
+from tests._helpers import ok_envelope as _ok_envelope
 
 
 def _409_envelope(duplicate_at: str = "2026-07-14T13:00:00Z") -> str:
@@ -43,21 +27,6 @@ def _409_envelope(duplicate_at: str = "2026-07-14T13:00:00Z") -> str:
             "http_status": 409,
             "duplicate_at": duplicate_at,
             "message": "This exact file was already uploaded.",
-        }
-    )
-
-
-def _ok_envelope(imported: int = 1, total: int = 1) -> str:
-    return json.dumps(
-        {
-            "ok": True,
-            "imported": imported,
-            "captured": imported,
-            "updated": 0,
-            "duplicates": 0,
-            "no_gps": 0,
-            "bad_rows": 0,
-            "total": total,
         }
     )
 
