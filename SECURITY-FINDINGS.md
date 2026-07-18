@@ -1,5 +1,18 @@
 # Security review — findings & disposition
 
+> **Update 2026-07-18** — SonarCloud's taint engine raised the two
+> `pythonsecurity:S8707` findings this table already dispositions (the
+> operator-chosen `csv` read in `_read_csv_bytes` and the `--aircraft-json`
+> load). Per the table below they are accept-by-design for an operator-run
+> CLI. The acceptance now lives in `sonar-project.properties`
+> (`sonar.issue.ignore.multicriteria`, scoped to `S8707` on
+> `wigle_to_wdgwars.py` only) rather than as UI-accepted issues: UI
+> dispositions are keyed to issue-tracking matches and silently reset when
+> the file changes shape, which is exactly how they re-raised and
+> hard-failed the gate on 2026-07-18. Any *new* S8707 in this file will be
+> ignored too — reviewers must keep this table honest when adding
+> path-handling code.
+
 On **2026-06-21**, as part of bringing the WDGoWars feeder family onto a common
 gated CI pipeline (pytest + coverage → SonarCloud → Snyk), `wigle_to_wdgwars.py`
 was reviewed for the same classes of issue that SonarCloud's SAST flagged in the
