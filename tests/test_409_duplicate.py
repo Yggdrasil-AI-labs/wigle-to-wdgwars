@@ -111,14 +111,19 @@ class UploadChunks409Tests(unittest.TestCase):
             (409, _409_envelope()),
             (200, _ok_envelope(imported=3)),
         ]
-        rc, calls, out, _, _, slept = self._run_with_responses(chunks, responses)
+        rc, calls, out, _, hwm, slept = self._run_with_responses(chunks, responses)
         self.assertEqual(rc, 0)
         self.assertEqual(len(calls), 2)
         agg = json.loads(out)
         self.assertTrue(agg["ok"])
         self.assertEqual(agg["chunks"], 2)
-        # Cooldown between the duplicate and the next queued chunk.
-        slept.assert_any_call(5.0)
+        # Exactly one sleep: the 409-branch cooldown before the next queued
+        # chunk. The trailing 200 empties the queue, so the generic
+        # inter-chunk sleep must not fire — call_count pins the sleep to the
+        # duplicate branch rather than the fallthrough path.
+        slept.assert_called_once_with(5.0)
+        # The real upload advances the high-water mark; the duplicate didn't.
+        hwm.assert_called_once()
 
     def test_409_duplicate_on_last_chunk_skips_cooldown(self) -> None:
         csv = _csv_with_rows(2)
@@ -138,6 +143,18 @@ class UploadChunks409Tests(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(len(calls), 1)
         self.assertFalse(json.loads(out)["ok"])
+
+    def test_non_409_status_with_duplicate_body_still_fails(self) -> None:
+        """The benign path requires status 409 AND the duplicate_upload
+        envelope. A 500 whose body happens to echo duplicate_upload must not
+        be masked as success."""
+        csv = _csv_with_rows(2)
+        responses = [(500, _409_envelope())]
+        rc, calls, out, _, hwm, _ = self._run_with_responses([csv], responses)
+        self.assertEqual(rc, 1)
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(json.loads(out)["ok"])
+        hwm.assert_not_called()
 
 
 if __name__ == "__main__":
