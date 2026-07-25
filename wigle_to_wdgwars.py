@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""wigle-to-wdgwars: push WiGLE-1.6 CSVs to the WDGoWars wardriving leaderboard.
+"""wigle-to-wdgwars: push WiGLE-1.6 CSVs to the WDGWars wardriving leaderboard.
 
-WDGoWars (https://wdgwars.pl/) is a community wardriving leaderboard / game.
+WDGWars (https://wdgwars.pl/) is a community wardriving leaderboard / game.
 This tool takes any WiGLE-format CSV (Wi-Fi + BLE observations with GPS) and
-posts it to the WDGoWars ingest endpoint. It also supports pushing aircraft
+posts it to the WDGWars ingest endpoint. It also supports pushing aircraft
 records to the signed JSON endpoint when given an aircraft JSON file.
 
 Auth: header `X-API-Key: <key>`. Bearer auth is rejected by the server.
@@ -28,7 +28,7 @@ Quickstart:
     # Push aircraft JSON to the signed endpoint
     python3 wigle_to_wdgwars.py --aircraft-json aircraft.json
 
-See README.md for the full WDGoWars API reference, cron recipes, and a
+See README.md for the full WDGWars API reference, cron recipes, and a
 walkthrough for producing WiGLE CSVs from common capture stacks (WiGLE
 Android app, Kismet, hcxdumptool).
 """
@@ -433,9 +433,9 @@ def _write_secret_file(path: Path, value: str) -> None:
 
 
 def save_key(key: str) -> None:
-    """Save the WDGoWars API key to the user config dir (mode 600)."""
+    """Save the WDGWars API key to the user config dir (mode 600)."""
     _write_secret_file(DEFAULT_KEY_FILE, key.strip())
-    print(f"[wigle-to-wdgwars] saved WDGoWars API key to {DEFAULT_KEY_FILE}",
+    print(f"[wigle-to-wdgwars] saved WDGWars API key to {DEFAULT_KEY_FILE}",
           file=sys.stderr)
     print(f"[wigle-to-wdgwars] (file mode 600 — only your user can read it)",
           file=sys.stderr)
@@ -453,7 +453,7 @@ def save_wigle_token(token: str) -> None:
 # ───────────────────────────── Key validation ────────────────────────────────
 
 def check_whoami(key: str) -> int:
-    """GET /api/me to validate a WDGoWars key. Returns 0 on success, 1 on fail.
+    """GET /api/me to validate a WDGWars key. Returns 0 on success, 1 on fail.
 
     Read-only — safe to call during setup without touching the upload
     queue or the user's leaderboard counts.
@@ -586,7 +586,7 @@ def _prompt_int(label: str, default: int, *, min_val: int = 0,
 def interactive_setup() -> int:
     """First-run setup. Prompts for both API keys, validates each, saves.
 
-    Order: WDGoWars first (mandatory — without it, nothing uploads),
+    Order: WDGWars first (mandatory — without it, nothing uploads),
     WiGLE second (optional — only needed for --from-wigle pull mode).
     Then offers to install a daily timer. Each step is independently
     skippable; cancelling later steps does not undo earlier ones.
@@ -602,7 +602,7 @@ def interactive_setup() -> int:
     print("", file=sys.stderr)
     print(" This walks you through saving your two API keys and (optionally)", file=sys.stderr)
     print(" installing a recurring timer that pushes your WiGLE uploads", file=sys.stderr)
-    print(" to WDGoWars without further input.", file=sys.stderr)
+    print(" to WDGWars without further input.", file=sys.stderr)
     print("", file=sys.stderr)
     print(f" Both keys are stored under: {CONFIG_DIR}", file=sys.stderr)
     print(" Each file is written with mode 600 (only your user can read it).", file=sys.stderr)
@@ -617,10 +617,10 @@ def interactive_setup() -> int:
         return 1
 
     if saved_wdg == 0:
-        # WDGoWars key didn't get saved (declined or missing) — no point
+        # WDGWars key didn't get saved (declined or missing) — no point
         # offering a timer that can't upload.
         print("", file=sys.stderr)
-        print(" Skipping schedule setup — no WDGoWars key saved.", file=sys.stderr)
+        print(" Skipping schedule setup — no WDGWars key saved.", file=sys.stderr)
         print(" Re-run --setup once you have one.", file=sys.stderr)
         return 0
 
@@ -636,8 +636,8 @@ def interactive_setup() -> int:
 
 
 def _setup_wdgwars_key() -> int:
-    """Sub-step: WDGoWars key. Returns 1 saved, 0 declined/skipped, -1 cancel."""
-    print(" ── WDGoWars API key ─────────────────────────────────────────",
+    """Sub-step: WDGWars key. Returns 1 saved, 0 declined/skipped, -1 cancel."""
+    print(" ── WDGWars API key ─────────────────────────────────────────",
           file=sys.stderr)
     print(" Required for uploads. Get it from:", file=sys.stderr)
     print("   https://wdgwars.pl/account   →  Settings  →  API Key",
@@ -645,16 +645,16 @@ def _setup_wdgwars_key() -> int:
     print("", file=sys.stderr)
 
     if DEFAULT_KEY_FILE.exists():
-        print(f" A WDGoWars key is already saved at {DEFAULT_KEY_FILE}.",
+        print(f" A WDGWars key is already saved at {DEFAULT_KEY_FILE}.",
               file=sys.stderr)
         if not _prompt_yes_no(" Replace it?", default=False):
             return 1  # treat existing key as "saved"
 
-    if not _prompt_yes_no(" Save a WDGoWars API key now?", default=True):
+    if not _prompt_yes_no(" Save a WDGWars API key now?", default=True):
         return 0
 
     while True:
-        key = _prompt_secret(" Paste your WDGoWars API key: ")
+        key = _prompt_secret(" Paste your WDGWars API key: ")
         if not key:
             print(" (empty input — try again, or Ctrl+C to cancel)",
                   file=sys.stderr)
@@ -680,7 +680,7 @@ def _setup_wigle_token() -> int:
           file=sys.stderr)
     print(" Only needed if you want --from-wigle (pulls your latest WiGLE",
           file=sys.stderr)
-    print(" upload and pushes it to WDGoWars, no file needed).", file=sys.stderr)
+    print(" upload and pushes it to WDGWars, no file needed).", file=sys.stderr)
     print("", file=sys.stderr)
     print(" Get the 'Encoded for use' string from:", file=sys.stderr)
     print("   https://wigle.net/account", file=sys.stderr)
@@ -945,7 +945,7 @@ def _split_bytes(csv_bytes: bytes, chunk_rows: int) -> list[bytes]:
     """Split WiGLE CSV bytes into N-row chunks, preserving the 2-line header on each.
 
     Chunking is the workaround for the Cloudflare 524 (origin timeout) the
-    WDGoWars proxy hits when a synchronous import takes >120 s. 10k rows per
+    WDGWars proxy hits when a synchronous import takes >120 s. 10k rows per
     chunk lands comfortably under that cap.
     """
     raw = csv_bytes.decode("utf-8").splitlines(keepends=False)
@@ -1011,7 +1011,7 @@ def _aggregate(payloads: list[dict]) -> dict:
 
 def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
                    dry_run: bool, cooldown_sec: float) -> int:
-    """POST pre-split CSV chunks to WDGoWars. Returns shell exit code (0 ok).
+    """POST pre-split CSV chunks to WDGWars. Returns shell exit code (0 ok).
 
     Resilient to HTTP 413 from LOCOSP's 15 MB upload cap (2026-06-05): any
     chunk that comes back with `{error: payload-too-large, max_bytes, received}`
@@ -1121,7 +1121,7 @@ def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
 def upload_csv_bytes(csv_bytes: bytes, name: str, key: str, field: str,
                      dry_run: bool, chunk_rows: int = 0, cooldown_sec: float = 5.0,
                      since_seconds: int = 0) -> int:
-    """Upload WiGLE CSV bytes (e.g. pulled from WiGLE) to WDGoWars.
+    """Upload WiGLE CSV bytes (e.g. pulled from WiGLE) to WDGWars.
 
     ``since_seconds > 0`` drops rows whose FirstSeen is older than the
     cutoff before chunking (see :func:`filter_csv_since`)."""
@@ -1322,11 +1322,11 @@ def wigle_download_csv(token: str, transid: str) -> bytes:
 
 
 def _load_processed_transids() -> set:
-    """Transids already pushed to WDGoWars (persisted in PROCESSED_FILE).
+    """Transids already pushed to WDGWars (persisted in PROCESSED_FILE).
 
     Lets the daily pull skip re-downloading uploads it has already sent.
     WiGLE regenerates each CSV server-side (minutes for a big upload), so
-    re-pulling one that's already on WDGoWars is pure waste."""
+    re-pulling one that's already on WDGWars is pure waste."""
     try:
         data = json.loads(PROCESSED_FILE.read_text())
         return set(data.get("processed", []))
@@ -1351,7 +1351,7 @@ def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
                                     cooldown_sec: float,
                                     since_seconds: int = 0,
                                     reprocess: bool = False) -> int:
-    """Pull your latest WiGLE upload(s) and push each to WDGoWars.
+    """Pull your latest WiGLE upload(s) and push each to WDGWars.
 
     ``since_seconds > 0`` drops rows older than the cutoff from each
     downloaded WiGLE CSV before uploading.
@@ -1380,7 +1380,7 @@ def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
     rc = 0
     for tid in pending:
         csv_bytes = wigle_download_csv(wigle_token, tid)
-        print(f"[wigle] {tid}: {len(csv_bytes) / 1024:.1f} KB -> WDGoWars",
+        print(f"[wigle] {tid}: {len(csv_bytes) / 1024:.1f} KB -> WDGWars",
               file=sys.stderr)
         r = upload_csv_bytes(csv_bytes, f"{tid}.csv", wdg_key, field,
                              dry_run, chunk_rows, cooldown_sec,
@@ -1407,7 +1407,7 @@ def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
 
 SCHEDULE_MARKER = "managed-by-wigle-to-wdgwars"
 SYSTEMD_UNIT_NAME = "wigle-to-wdgwars"  # .service + .timer share this stem
-WINDOWS_TASK_NAME = "WigleToWDGoWars"
+WINDOWS_TASK_NAME = "WigleToWDGWars"
 DEFAULT_SCHEDULE_TIME = "03:00"
 
 
@@ -1740,7 +1740,7 @@ def interactive_schedule_setup(have_wigle: bool = False) -> int:
         print("", file=sys.stderr)
         print(" No WiGLE token saved. The auto-installer only handles the",
               file=sys.stderr)
-        print(" --from-wigle mode (pull latest from WiGLE, push to WDGoWars).",
+        print(" --from-wigle mode (pull latest from WiGLE, push to WDGWars).",
               file=sys.stderr)
         print(" For file-based scheduling (point cron at a local CSV), see",
               file=sys.stderr)
@@ -1879,8 +1879,8 @@ def main() -> int:
     global ENDPOINT
     ap = argparse.ArgumentParser(
         prog="wigle-to-wdgwars",
-        description="Upload WiGLE-1.6 CSVs (and optionally aircraft JSON) to WDGoWars.",
-        epilog="See README.md for the full WDGoWars API reference and cron recipes.",
+        description="Upload WiGLE-1.6 CSVs (and optionally aircraft JSON) to WDGWars.",
+        epilog="See README.md for the full WDGWars API reference and cron recipes.",
     )
     ap.add_argument("csv", nargs="?",
                     help="path to a WiGLE-1.6 CSV (or .gz, gzip is auto-detected); "
@@ -1923,7 +1923,7 @@ def main() -> int:
                          f"this trailing window (default: {DEFAULT_SINCE}). "
                          f"Accepts NNs/m/h/d/w; a bare number is days. Stops "
                          f"the tool from re-pushing years of WiGLE history on "
-                         f"every cron tick (WDGoWars already deduped them). "
+                         f"every cron tick (WDGWars already deduped them). "
                          f"Use --all-time to disable.")
     ap.add_argument("--all-time", action="store_true",
                     help="disable the --since gate and upload every row in the "
@@ -1937,7 +1937,7 @@ def main() -> int:
                     help="aircraft records per signed POST (default: 500)")
     ap.add_argument("--from-wigle", action="store_true",
                     help="pull your latest upload(s) straight from WiGLE and push them to "
-                         "WDGoWars, no file needed. Uses your WiGLE token (--wigle-key).")
+                         "WDGWars, no file needed. Uses your WiGLE token (--wigle-key).")
     ap.add_argument("--wigle-key", metavar="TOKEN",
                     help="WiGLE 'Encoded for use' token (overrides $WIGLE_API_KEY and key file). "
                          "Used with --from-wigle.")
@@ -1949,11 +1949,11 @@ def main() -> int:
                          "as processed (ignores the processed-transids state file)")
     ap.add_argument("--setup", action="store_true",
                     help="interactive first-time setup — prompts for your "
-                         "WDGoWars and WiGLE keys, validates them, saves them "
+                         "WDGWars and WiGLE keys, validates them, saves them "
                          "to ~/.config/wigle-to-wdgwars/ (mode 600), and "
                          "optionally installs a daily timer.")
     ap.add_argument("--save-key", metavar="KEY",
-                    help="non-interactive: save the given WDGoWars API key "
+                    help="non-interactive: save the given WDGWars API key "
                          "to the user config dir. Prefer --setup for first-time install.")
     ap.add_argument("--save-wigle-key", metavar="TOKEN",
                     help="non-interactive: save the given WiGLE 'Encoded for "
@@ -2022,9 +2022,9 @@ def main() -> int:
                     or args.schedule_dry_run)
         if headless:
             return cmd_schedule_headless(args)
-        # Interactive: needs a saved WDGoWars key; offer to set up if not.
+        # Interactive: needs a saved WDGWars key; offer to set up if not.
         if not DEFAULT_KEY_FILE.exists() and not os.environ.get("WDGWARS_API_KEY"):
-            print("[wigle-to-wdgwars] no WDGoWars key saved — running --setup "
+            print("[wigle-to-wdgwars] no WDGWars key saved — running --setup "
                   "first.", file=sys.stderr)
             return interactive_setup()
         return interactive_schedule_setup(have_wigle=WIGLE_KEY_FILE.exists()

@@ -1,6 +1,6 @@
 """wigle-to-wdgwars test suite.
 
-Safety net: refuse to start the test process if a live WDGoWars API
+Safety net: refuse to start the test process if a live WDGWars API
 key (or WiGLE token) is configured at the canonical wigle-to-wdgwars
 paths. Tests that exercise upload paths read these the same way
 production runs do — a stray test invocation can post synthetic data

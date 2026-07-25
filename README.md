@@ -7,13 +7,13 @@
 </p>
 
 Push WiGLE-format Wi-Fi/BLE wardrive CSVs (and optionally aircraft JSON) to the
-**[WDGoWars](https://wdgwars.pl/)** community wardriving leaderboard.
+**[WDGWars](https://wdgwars.pl/)** community wardriving leaderboard.
 
 A small Python 3 CLI. One dependency: [gungnir](https://github.com/Yggdrasil-AI-labs/gungnir), the shared HMAC transport client used by every wdgwars.pl feeder in this family. Install it with `pip install -r requirements.txt` (no git on PATH required — pip fetches it as a tarball over plain HTTPS).
 
 ## Family
 
-Sibling repos in the WDGoWars feeder family:
+Sibling repos in the WDGWars feeder family:
 
 - [Muninn](https://github.com/Yggdrasil-AI-labs/adsb-to-wdgwars) — ADS-B feeder
 - [Heimdall](https://github.com/Yggdrasil-AI-labs/meshcore-to-wdgwars) — MeshCore LoRa feeder
@@ -30,7 +30,7 @@ Sibling repos in the WDGoWars feeder family:
 - [Installing](#installing) — manual venv + pip flow
 - [Getting a WiGLE CSV in the first place](#getting-a-wigle-csv-in-the-first-place)
 - [Running on a schedule (timer)](#running-on-a-schedule-timer) — what `--schedule` installs, plus hand-written recipes
-- [WDGoWars API reference](#wdgowars-api-reference) — reverse-engineered, since the portal has no public docs
+- [WDGWars API reference](#wdgowars-api-reference) — reverse-engineered, since the portal has no public docs
 - [Aircraft JSON format (signed endpoint)](#aircraft-json-format-signed-endpoint)
 - [Troubleshooting](#troubleshooting)
 - [Related tools](#related-tools)
@@ -40,7 +40,7 @@ Sibling repos in the WDGoWars feeder family:
 
 ## What this is
 
-[WDGoWars](https://wdgwars.pl/) ("Watch Dogs Go Wars") is a community
+[WDGWars](https://wdgwars.pl/) ("Watch Dogs Go Wars") is a community
 wardriving leaderboard / game. Players capture Wi-Fi networks, Bluetooth
 devices, and aircraft, upload their observations, score points, earn badges,
 and join gangs. It's small, friendly, and Polish-run.
@@ -55,7 +55,7 @@ contract from network captures or open-source firmware. This tool:
 3. Optionally **pulls your uploads straight from WiGLE** (`--from-wigle`) and
    pushes them, so you never touch a file.
 4. Documents the wire format so the next person doesn't have to start over
-   (see [WDGoWars API reference](#wdgwars-api-reference)).
+   (see [WDGWars API reference](#wdgwars-api-reference)).
 
 It's designed to be readable, droppable into a cron job, and friendly to
 new players who haven't published a wardrive before.
@@ -69,7 +69,7 @@ new players who haven't published a wardrive before.
   to WiGLE CSV.
 - You want a **scheduled push** from a Pi/server that keeps a local DB of
   observations and produces CSVs.
-- You're a tool author who needs a working reference for the WDGoWars
+- You're a tool author who needs a working reference for the WDGWars
   ingest contract.
 
 ---
@@ -95,7 +95,7 @@ What `setup.sh` does, in order:
 
 1. Creates a project-local `.venv/` and installs `requirements.txt` into it
    (works on PEP 668 distros without `--break-system-packages`).
-2. Prompts for your **WDGoWars API key**, validates it against `/api/me`,
+2. Prompts for your **WDGWars API key**, validates it against `/api/me`,
    saves to `~/.config/wigle-to-wdgwars/wdgwars.key` (mode 600).
 3. Prompts for your **WiGLE token** (the "Encoded for use" string from
    [wigle.net/account](https://wigle.net/account)), validates it by listing
@@ -166,8 +166,8 @@ crontab -l | grep wigle-to-wdgwars
 tail -f ~/.wigle-to-wdgwars-cron.log
 
 # Windows (schtasks)
-schtasks /Query /TN WigleToWDGoWars /V /FO LIST          :: shows Last Run Result
-schtasks /Run   /TN WigleToWDGoWars                      :: fire one tick now
+schtasks /Query /TN WigleToWDGWars /V /FO LIST          :: shows Last Run Result
+schtasks /Run   /TN WigleToWDGWars                      :: fire one tick now
 # Task Scheduler does NOT capture stdout. To see what a run produces,
 # fire the same command from PowerShell yourself:
 .venv\Scripts\python wigle_to_wdgwars.py --from-wigle --wigle-latest 1 \
@@ -178,7 +178,7 @@ A `--dry-run` tick that succeeded looks like (in the log / journal):
 
 ```
 [wigle] pulling 1 most-recent upload(s): <transid>
-[wigle] <transid>: <N> KB -> WDGoWars
+[wigle] <transid>: <N> KB -> WDGWars
 [wdgwars] POST https://wdgwars.pl/api/upload-csv field=file file=<transid>.csv chunks=1 total=<N> KB
 [wdgwars] dry-run: not sending
 ```
@@ -211,7 +211,7 @@ the leaderboard yet, but everything up to that point worked. To flip live:
   didn't get to the save step). Run `./run.sh --setup` to do the wizard.
 - **Timer installed but nothing on the leaderboard the next day** — see the
   dry-run note above. You're seeing the safety stop, not a broken install.
-- **`HTTP 429` in the log** — either WDGoWars is asking you to wait
+- **`HTTP 429` in the log** — either WDGWars is asking you to wait
   (server-side queue is processing your previous upload — the tool sleeps
   and retries on the next tick) or WiGLE is rate-limiting you for pulling
   too often. The cooldown file at `~/.config/wigle-to-wdgwars/cooldown.json`
@@ -247,9 +247,9 @@ On Windows: `.venv\Scripts\python wigle_to_wdgwars.py ...`. Or just use
 
 If you wardrive with the WiGLE app, your runs already get uploaded to WiGLE.
 With `--from-wigle` the tool grabs your latest upload from WiGLE directly and
-pushes it to WDGoWars — you never export, unzip, or move a file.
+pushes it to WDGWars — you never export, unzip, or move a file.
 
-You need two keys: your **WDGoWars** key (`--key`) and your **WiGLE** token
+You need two keys: your **WDGWars** key (`--key`) and your **WiGLE** token
 (`--wigle-key`, the "Encoded for use" string from
 [wigle.net/account](https://wigle.net/account)).
 
@@ -278,7 +278,7 @@ default is `7d`, set with `--since DURATION`:
 ```
 
 This stops a cron job from re-pushing years of WiGLE history every tick.
-WDGoWars already deduped those rows on the server; the trip wastes the
+WDGWars already deduped those rows on the server; the trip wastes the
 LOCOSP daily cap and the Cloudflare per-IP budget. The window also runs on
 `--from-wigle`, so a stale-but-large WiGLE transaction won't blow the cap.
 
@@ -380,7 +380,7 @@ parity bugs.
 
 ### Where the API keys are read from (in order)
 
-**WDGoWars** (`--key` / `$WDGWARS_API_KEY` / `wdgwars.key`):
+**WDGWars** (`--key` / `$WDGWARS_API_KEY` / `wdgwars.key`):
 
 1. `--key YOUR_KEY` on the command line.
 2. `$WDGWARS_API_KEY` environment variable.
@@ -476,7 +476,7 @@ columns are:
 MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type
 ```
 
-`Type` is `WIFI`, `BLE`, or `GSM` (only WIFI/BLE are honored by WDGoWars).
+`Type` is `WIFI`, `BLE`, or `GSM` (only WIFI/BLE are honored by WDGWars).
 The first header line is a meta comment that WiGLE writes; the tool
 preserves both header lines when chunking.
 
@@ -521,7 +521,7 @@ the `--schedule` auto-installer.
 
 **The truly hands-off version:** use `--from-wigle` (see
 [No file at all](#no-file-at-all--pull-straight-from-wigle)). The timer pulls
-your latest WiGLE upload and pushes it to WDGoWars with no file involved at
+your latest WiGLE upload and pushes it to WDGWars with no file involved at
 all. Swap the command in any recipe below for:
 
 ```
@@ -530,7 +530,7 @@ all. Swap the command in any recipe below for:
 
 **The file-based version:** always export (or save) your WiGLE file to the
 *same path* — e.g. `wardrive.wiglecsv.gz` — and point a timer at that path.
-Each run re-pushes the file; WDGoWars dedupes server-side, so re-sending the
+Each run re-pushes the file; WDGWars dedupes server-side, so re-sending the
 same data is harmless and still picks up any new rows or merged location
 samples. Pick the recipe for your OS below.
 
@@ -550,7 +550,7 @@ Create the timer (run once in an **admin** PowerShell or Command Prompt — this
 fires it daily at 3am):
 
 ```powershell
-schtasks /Create /F /TN "WDGoWars Push" /TR "C:\Wardrives\push-wardrive.bat" /SC DAILY /ST 03:00
+schtasks /Create /F /TN "WDGWars Push" /TR "C:\Wardrives\push-wardrive.bat" /SC DAILY /ST 03:00
 ```
 
 (`/F` lets you re-run the same line later to change the time without an
@@ -558,7 +558,7 @@ overwrite prompt.)
 
 To change the time, run the same `schtasks /Create` again with a new `/ST`, or
 edit it in the Task Scheduler GUI (search "Task Scheduler" in the Start menu →
-find "WDGoWars Push").
+find "WDGWars Push").
 
 ### cron (Linux / Mac) — push every 6 hours
 
@@ -577,7 +577,7 @@ back-to-back jobs that catch a 429 won't hammer the server.
 
 ```ini
 [Unit]
-Description=Push wardrive CSV to WDGoWars
+Description=Push wardrive CSV to WDGWars
 
 [Service]
 Type=oneshot
@@ -588,7 +588,7 @@ ExecStart=/usr/bin/env python3 %h/bin/wigle_to_wdgwars.py %h/wardrives/latest.cs
 
 ```ini
 [Unit]
-Description=Daily WDGoWars push
+Description=Daily WDGWars push
 
 [Timer]
 OnCalendar=*-*-* 03:00:00
@@ -647,9 +647,9 @@ unchanged — if you need to redirect those, use Muninn's `--api-url`.
 
 ---
 
-## WDGoWars API reference
+## WDGWars API reference
 
-> **There are no official public docs for the WDGoWars API.** The table
+> **There are no official public docs for the WDGWars API.** The table
 > below was reverse-engineered from network captures and from the
 > open-source uploaders that already work against the portal (see
 > [Related tools](#related-tools)). It is accurate as of late May 2026;
@@ -761,7 +761,7 @@ server treats it as a valid file.
 ### WiGLE API (the `--from-wigle` pull side)
 
 `--from-wigle` reads your own uploads back out of WiGLE, then feeds them into
-the WDGoWars push above. The WiGLE side uses HTTP Basic auth with the
+the WDGWars push above. The WiGLE side uses HTTP Basic auth with the
 **pre-encoded token** from [wigle.net/account](https://wigle.net/account) (the
 "Encoded for use" string), sent as `Authorization: Basic <token>`.
 
@@ -870,7 +870,7 @@ endpoint by default; only hits when something rewrites the URL.
 
 **`HTTP 401`** — Bad key, or you set `Authorization: Bearer …` somewhere.
 Run `--whoami` to confirm. Make sure your key is the full string from the
-WDGoWars account page, no extra whitespace.
+WDGWars account page, no extra whitespace.
 
 **`HTTP 429` repeating forever** — Your previous upload is still queued
 server-side. Wait the `retry_after` seconds (the tool does this for you on
@@ -882,7 +882,7 @@ it: `rm ~/.config/wigle-to-wdgwars/cooldown.json`.
 data is probably ingesting anyway — check `--whoami` counts after.
 
 **`imported: 0, duplicates: <huge>`** — Expected on the second push of the
-same CSV. WDGoWars dedupes per-fingerprint. Only new BSSIDs/SSIDs (or new
+same CSV. WDGWars dedupes per-fingerprint. Only new BSSIDs/SSIDs (or new
 locations for existing ones) count.
 
 **`bad_rows: <nonzero>`** — Some rows didn't parse. Most often missing or
@@ -901,7 +901,7 @@ out and let the origin finish in the background, Ctrl-C and check
 
 ## Related tools
 
-The wardriving + WDGoWars ecosystem of uploaders:
+The wardriving + WDGWars ecosystem of uploaders:
 
 | Tool | Platform | Path | Repo |
 |---|---|---|---|
@@ -935,6 +935,6 @@ in particular `Hamspiced/piglet` and `7h30th3r0n3/Raspyjack`. The
 chunking-around-Cloudflare-524 workaround is well-documented across the
 community; this tool just bakes it in by default.
 
-WDGoWars is run by its community. If you upload a lot, consider joining a
+WDGWars is run by its community. If you upload a lot, consider joining a
 gang and helping the leaderboard stay weird.
 

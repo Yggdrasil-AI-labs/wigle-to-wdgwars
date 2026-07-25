@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Double-click: run the default daily push (pull latest WiGLE upload,
-# push to WDGoWars). Both keys must already be saved (./setup.sh).
+# push to WDGWars). Both keys must already be saved (./setup.sh).
 # CLI:         forward any args to wigle_to_wdgwars.py through the venv.
 #
 # Examples:
 #   ./run.sh                                # default: --from-wigle daily push
-#   ./run.sh --whoami                       # validate saved WDGoWars key
+#   ./run.sh --whoami                       # validate saved WDGWars key
 #   ./run.sh wardrive.wiglecsv.gz           # one-off file push
 #   ./run.sh --setup                        # save keys + optional timer
 #   ./run.sh --schedule                     # configure scheduled task

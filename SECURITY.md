@@ -12,7 +12,7 @@
   `https://api.wigle.net/api/v2/file/transactions` using your WiGLE
   "Encoded for use" token, then POSTs the CSV(s) to wdgwars.pl.
 - With `--whoami`, hits `https://wdgwars.pl/api/me` to validate the
-  WDGoWars key.
+  WDGWars key.
 - With `--update`, fetches a fresh `wigle_to_wdgwars.py` (and
   `requirements.txt`) from `https://github.com/HiroAlleyCat/wigle-to-wdgwars`
   via `git pull` or raw GitHub.
@@ -35,19 +35,19 @@ That's the entire outbound footprint.
 - No remote code execution at runtime. The only dependency is
   `gungnir`, pinned by tag in `requirements.txt` and installed via
   pip from the GitHub release tarball.
-- No data sent anywhere except the configured WDGoWars and WiGLE
+- No data sent anywhere except the configured WDGWars and WiGLE
   endpoints when you explicitly opt in.
 
 ## API key handling
 
-- WDGoWars key resolution: `--key` flag, then `$WDGWARS_API_KEY`,
+- WDGWars key resolution: `--key` flag, then `$WDGWARS_API_KEY`,
   then `~/.config/wigle-to-wdgwars/wdgwars.key`.
 - WiGLE token resolution: `--wigle-key` flag, then `$WIGLE_API_KEY`,
   then `~/.config/wigle-to-wdgwars/wigle.key`.
 - Both files are written with mode `0600` (POSIX). The directory is
   created with `0700`. `--setup` and `--save-key`/`--save-wigle-key`
   are the only write paths.
-- Keys are sent over HTTPS only: WDGoWars in the `X-API-Key` request
+- Keys are sent over HTTPS only: WDGWars in the `X-API-Key` request
   header, WiGLE in the `Authorization: Basic <token>` header. The TLS
   context is Python's `ssl.create_default_context()` default — system
   trust store, hostname verification on, TLS 1.2+.
@@ -58,7 +58,7 @@ That's the entire outbound footprint.
 
 ## What the keys can do
 
-The WDGoWars API key authorises you to submit observations under your
+The WDGWars API key authorises you to submit observations under your
 account. If it leaks, an attacker could:
 
 - Submit fake Wi-Fi / BLE / mesh / aircraft captures under your name.
@@ -110,7 +110,7 @@ uses mode 600. The full write-up is in
 
 ## Reporting issues
 
-Open a GitHub issue, or DM the maintainer on the WDGoWars community
-channels. For anything potentially exploitable upstream (in WDGoWars
+Open a GitHub issue, or DM the maintainer on the WDGWars community
+channels. For anything potentially exploitable upstream (in WDGWars
 itself), please disclose privately to LOCOSP first rather than filing
 a public issue here.

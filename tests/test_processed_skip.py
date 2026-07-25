@@ -2,7 +2,7 @@
 
 The daily --from-wigle pull records each successfully pushed WiGLE upload
 in a state file and skips re-downloading it on the next run (WiGLE
-regenerates each CSV server-side, so re-pulling one already on WDGoWars
+regenerates each CSV server-side, so re-pulling one already on WDGWars
 wastes minutes). A transid is recorded only on a real, non-dry-run
 success; --reprocess ignores the state entirely.
 """

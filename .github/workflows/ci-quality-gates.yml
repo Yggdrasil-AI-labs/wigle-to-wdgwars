@@ -38,7 +38,7 @@ jobs:
           python -m pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Run pytest with coverage
-        # CI runners never hold a real WDGoWars / WiGLE key, so the live-key
+        # CI runners never hold a real WDGWars / WiGLE key, so the live-key
         # safety guard is a no-op here; the env var makes that intent explicit.
         env:
           WIGLE_TEST_ALLOW_LIVE_KEY: "1"
