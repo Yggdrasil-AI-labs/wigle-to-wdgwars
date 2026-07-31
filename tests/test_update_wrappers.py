@@ -107,7 +107,7 @@ class UpdateFromRawCallsWrapperRefreshTests(unittest.TestCase):
              mock.patch.object(w2w, "_pip_install_requirements"), \
              mock.patch("sys.stderr", new=io.StringIO()):
             rc = w2w._update_from_raw(Path(td))
-            # Read inside the block — the tempdir is gone after it.
+            # Read inside the block. The tempdir is gone after it.
             written = (Path(td) / "wigle_to_wdgwars.py").read_text(
                 encoding="utf-8")
         self.assertEqual(rc, 0)

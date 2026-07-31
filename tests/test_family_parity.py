@@ -99,7 +99,7 @@ class VersionCheckCacheTests(unittest.TestCase):
 
     def test_network_error_returns_none(self) -> None:
         """If the cache is stale or missing, _check_for_update tries
-        GitHub. A failed urlopen must NOT raise to the caller — the
+        GitHub. A failed urlopen must NOT raise to the caller, the
         main() gate just skips the nudge in that case."""
         with tempfile.TemporaryDirectory() as td:
             with mock.patch.object(w2w, "CONFIG_DIR", Path(td)), \

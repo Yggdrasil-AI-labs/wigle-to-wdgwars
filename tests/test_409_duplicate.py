@@ -88,7 +88,7 @@ class UploadChunks409Tests(unittest.TestCase):
         self.assertEqual(agg["chunks"], 2)
         # Exactly one sleep: the 409-branch cooldown before the next queued
         # chunk. The trailing 200 empties the queue, so the generic
-        # inter-chunk sleep must not fire — call_count pins the sleep to the
+        # inter-chunk sleep must not fire, call_count pins the sleep to the
         # duplicate branch rather than the fallthrough path.
         slept.assert_called_once_with(5.0)
         # The real upload advances the high-water mark; the duplicate didn't.

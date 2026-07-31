@@ -9,28 +9,28 @@
 Push WiGLE-format Wi-Fi/BLE wardrive CSVs (and optionally aircraft JSON) to the
 **[WDGWars](https://wdgwars.pl/)** community wardriving leaderboard.
 
-A small Python 3 CLI. One dependency: [gungnir](https://github.com/Yggdrasil-AI-labs/gungnir), the shared HMAC transport client used by every wdgwars.pl feeder in this family. Install it with `pip install -r requirements.txt` (no git on PATH required — pip fetches it as a tarball over plain HTTPS).
+A small Python 3 CLI. One dependency: [gungnir](https://github.com/Yggdrasil-AI-labs/gungnir), the shared HMAC transport client used by every wdgwars.pl feeder in this family. Install it with `pip install -r requirements.txt` (no git on PATH required, pip fetches it as a tarball over plain HTTPS).
 
 ## Family
 
 Sibling repos in the WDGWars feeder family:
 
-- [Muninn](https://github.com/Yggdrasil-AI-labs/adsb-to-wdgwars) — ADS-B feeder
-- [Heimdall](https://github.com/Yggdrasil-AI-labs/meshcore-to-wdgwars) — MeshCore LoRa feeder
-- [gungnir](https://github.com/Yggdrasil-AI-labs/gungnir) — shared HMAC transport library
-- [wdgwars-api-tester](https://github.com/Yggdrasil-AI-labs/wdgwars-api-tester) — API surface probe
+- [Muninn](https://github.com/Yggdrasil-AI-labs/adsb-to-wdgwars). ADS-B feeder
+- [Heimdall](https://github.com/Yggdrasil-AI-labs/meshcore-to-wdgwars). MeshCore LoRa feeder
+- [gungnir](https://github.com/Yggdrasil-AI-labs/gungnir), shared HMAC transport library
+- [wdgwars-api-tester](https://github.com/Yggdrasil-AI-labs/wdgwars-api-tester). API surface probe
 
 ---
 
 ## Contents
 
 - [What this is](#what-this-is)
-- [Easiest install — guided setup](#easiest-install--guided-setup) — `./setup.sh` saves both keys and installs a daily timer
-- [Quick start — one-off push without saving keys](#quick-start--one-off-push-without-saving-keys)
-- [Installing](#installing) — manual venv + pip flow
+- [Easiest install, guided setup](#easiest-install--guided-setup), `./setup.sh` saves both keys and installs a daily timer
+- [Quick start, one-off push without saving keys](#quick-start--one-off-push-without-saving-keys)
+- [Installing](#installing), manual venv + pip flow
 - [Getting a WiGLE CSV in the first place](#getting-a-wigle-csv-in-the-first-place)
-- [Running on a schedule (timer)](#running-on-a-schedule-timer) — what `--schedule` installs, plus hand-written recipes
-- [WDGWars API reference](#wdgowars-api-reference) — reverse-engineered, since the portal has no public docs
+- [Running on a schedule (timer)](#running-on-a-schedule-timer), what `--schedule` installs, plus hand-written recipes
+- [WDGWars API reference](#wdgowars-api-reference). Reverse-engineered, since the portal has no public docs
 - [Aircraft JSON format (signed endpoint)](#aircraft-json-format-signed-endpoint)
 - [Troubleshooting](#troubleshooting)
 - [Related tools](#related-tools)
@@ -74,7 +74,7 @@ new players who haven't published a wardrive before.
 
 ---
 
-## Easiest install — guided setup
+## Easiest install - guided setup
 
 If you just want a daily push running and don't want to read the rest of this
 README, this is the path. One script does the whole install: venv, deps, both
@@ -112,7 +112,7 @@ After that, `./run.sh` (no args) does a one-off push, and the timer takes
 care of the rest. To remove the schedule later: `./run.sh --unschedule`.
 
 You can run `--setup` again at any point to rotate keys or reconfigure the
-timer — it's idempotent and asks before replacing anything.
+timer, it's idempotent and asks before replacing anything.
 
 To do any of those steps without the bootstrap script (e.g. you already
 have a venv), invoke the same flags directly:
@@ -134,7 +134,7 @@ have a venv), invoke the same flags directly:
 A few things that can read as "is this broken?" the first time:
 
 - **The first scheduled tick won't show up on your leaderboard.** `--setup`
-  defaults the timer to dry-run — the tick decodes and writes a log but
+  defaults the timer to dry-run. The tick decodes and writes a log but
   never POSTs. This is intentional so you can verify the install before
   flipping live. To go live, re-run `./run.sh --schedule` and answer "no"
   to the dry-run prompt.
@@ -152,7 +152,7 @@ A few things that can read as "is this broken?" the first time:
 
 ### Checking it's running
 
-You don't have to wait for the daily fire — verify the install end-to-end
+You don't have to wait for the daily fire, verify the install end-to-end
 right after `./setup.sh`:
 
 ```bash
@@ -161,7 +161,7 @@ systemctl --user list-timers wigle-to-wdgwars.timer
 systemctl --user start  wigle-to-wdgwars.service   # fire one tick now
 journalctl --user -u wigle-to-wdgwars.service -n 30
 
-# Linux/Mac (cron — installed when systemd isn't available)
+# Linux/Mac (cron - installed when systemd isn't available)
 crontab -l | grep wigle-to-wdgwars
 tail -f ~/.wigle-to-wdgwars-cron.log
 
@@ -183,7 +183,7 @@ A `--dry-run` tick that succeeded looks like (in the log / journal):
 [wdgwars] dry-run: not sending
 ```
 
-The `dry-run: not sending` is the safety stop — your data didn't ship to
+The `dry-run: not sending` is the safety stop, your data didn't ship to
 the leaderboard yet, but everything up to that point worked. To flip live:
 
 ```bash
@@ -195,35 +195,35 @@ the leaderboard yet, but everything up to that point worked. To flip live:
 
 ### Common surprises
 
-- **`bash: ./setup.sh: Permission denied`** — you downloaded the ZIP instead
+- **`bash: ./setup.sh: Permission denied`**: you downloaded the ZIP instead
   of `git clone`, and the executable bit didn't survive. Run `bash setup.sh`
   instead, or `chmod +x *.sh scripts/*.sh` first.
-- **`error: externally-managed-environment` from `pip install`** — Bookworm /
+- **`error: externally-managed-environment` from `pip install`**: Bookworm /
   Debian 12+ / Ubuntu 23.04+ / Homebrew Python enforce PEP 668 and refuse
   to install into system Python. The `./setup.sh` flow uses a project-local
   `.venv/` and works around this. If you've been pasting `python3 -m pip
   install -r requirements.txt` from an old README, switch to
   `./setup.sh` (or to the venv recipe in [Installing](#installing) below).
-- **`Failed to create venv` from `./setup.sh`** — the `python3-venv` module
+- **`Failed to create venv` from `./setup.sh`**: the `python3-venv` module
   isn't installed on Debian/Ubuntu/Pi by default. `sudo apt install -y
   python3-venv python3-full` and re-run.
-- **`./run.sh` errors with `no API key`** — you skipped `--setup` (or it
+- **`./run.sh` errors with `no API key`**: you skipped `--setup` (or it
   didn't get to the save step). Run `./run.sh --setup` to do the wizard.
-- **Timer installed but nothing on the leaderboard the next day** — see the
+- **Timer installed but nothing on the leaderboard the next day**: see the
   dry-run note above. You're seeing the safety stop, not a broken install.
-- **`HTTP 429` in the log** — either WDGWars is asking you to wait
-  (server-side queue is processing your previous upload — the tool sleeps
+- **`HTTP 429` in the log**: either WDGWars is asking you to wait
+  (server-side queue is processing your previous upload, the tool sleeps
   and retries on the next tick) or WiGLE is rate-limiting you for pulling
   too often. The cooldown file at `~/.config/wigle-to-wdgwars/cooldown.json`
   is honored across runs.
 
 ---
 
-## Quick start — one-off push without saving keys
+## Quick start - one-off push without saving keys
 
 If you just want to push a single file right now without saving anything to
 disk, paste the key on the command line. Use the venv from
-[Installing](#installing) — pasting `python3 wigle_to_wdgwars.py` directly
+[Installing](#installing), pasting `python3 wigle_to_wdgwars.py` directly
 against system Python errors out with `error: externally-managed-environment`
 on Bookworm / Debian 12+ / Homebrew. The venv path is one extra line and
 works on every distro.
@@ -231,7 +231,7 @@ works on every distro.
 ```bash
 # Inside the venv from the Installing section
 .venv/bin/python wigle_to_wdgwars.py --whoami --key YOUR_WDGWARS_API_KEY
-# → [wigle-to-wdgwars] key OK — user=…  wifi=… ble=… aircraft=…
+# → [wigle-to-wdgwars] key OK - user=…  wifi=… ble=… aircraft=…
 
 .venv/bin/python wigle_to_wdgwars.py my-wardrive.wiglecsv.gz \
     --key YOUR_WDGWARS_API_KEY --chunk-size 10000
@@ -243,11 +243,11 @@ the [Cloudflare 524 footgun](#the-cloudflare-524-footgun) for why.
 On Windows: `.venv\Scripts\python wigle_to_wdgwars.py ...`. Or just use
 `run.bat` from the [guided setup](#easiest-install--guided-setup) above.
 
-### No file at all — pull straight from WiGLE
+### No file at all - pull straight from WiGLE
 
 If you wardrive with the WiGLE app, your runs already get uploaded to WiGLE.
 With `--from-wigle` the tool grabs your latest upload from WiGLE directly and
-pushes it to WDGWars — you never export, unzip, or move a file.
+pushes it to WDGWars, you never export, unzip, or move a file.
 
 You need two keys: your **WDGWars** key (`--key`) and your **WiGLE** token
 (`--wigle-key`, the "Encoded for use" string from
@@ -300,10 +300,10 @@ the gate logs the situation and passes the bytes through unchanged.
 
 ## Installing
 
-You need **Python 3.10 or newer** and `pip`. Git is **not** required — pip
+You need **Python 3.10 or newer** and `pip`. Git is **not** required, pip
 fetches gungnir (the one dependency) over plain HTTPS using stdlib `urllib`.
 
-### Option A — ZIP download (no git needed)
+### Option A - ZIP download (no git needed)
 
 1. Grab the ZIP from [the GitHub repo](https://github.com/Yggdrasil-AI-labs/wigle-to-wdgwars) (Code → Download ZIP) and unzip it.
 2. From inside the unzipped folder:
@@ -314,7 +314,7 @@ python3 -m venv .venv          # required on Bookworm / Homebrew (PEP 668)
 .venv/bin/python wigle_to_wdgwars.py --help
 ```
 
-### Option B — clone with git
+### Option B - clone with git
 
 ```bash
 git clone https://github.com/Yggdrasil-AI-labs/wigle-to-wdgwars.git
@@ -332,7 +332,7 @@ python3 -m venv .venv          # required on Bookworm / Homebrew (PEP 668)
 
 ### Windows
 
-It runs on Windows exactly the same way — it's plain Python, no Linux-only
+It runs on Windows exactly the same way, it's plain Python, no Linux-only
 bits.
 
 1. Install Python 3.10+ from [python.org](https://www.python.org/downloads/) and
@@ -410,7 +410,7 @@ The script also writes two state files in `~/.config/wigle-to-wdgwars/`:
 | File | Purpose |
 |---|---|
 | `cooldown.json` | Persisted server-cooldown deadline. Set by 429 responses so a scheduled run an hour later still respects it. |
-| `hwm.json` | High-water mark — last successful upload timestamp and import counts, for monitoring. Pure read-only output. |
+| `hwm.json` | High-water mark, last successful upload timestamp and import counts, for monitoring. Pure read-only output. |
 
 ---
 
@@ -420,7 +420,7 @@ If you've already been wardriving with the WiGLE Android app, skip to
 [Option A](#option-a--wigle-android-app). Otherwise, here are the most
 common paths.
 
-### Option A — WiGLE Android app
+### Option A - WiGLE Android app
 
 The easiest entry point. Install
 [WiGLE WiFi Wardriving](https://play.google.com/store/apps/details?id=net.wigle.wigleandroid)
@@ -438,14 +438,14 @@ decompresses it for you, so just point it at whichever file you have:
 # plain CSV
 ./run.sh WigleWifi_20260523120000.csv --chunk-size 10000
 
-# the gzipped export works too — no unzipping needed
+# the gzipped export works too - no unzipping needed
 ./run.sh my-run.wiglecsv.gz --chunk-size 10000
 ```
 
 If you want BLE included, make sure WiGLE's Bluetooth scanning is enabled
 in settings before the drive.
 
-### Option B — Kismet + `kismetdb_to_wiglecsv`
+### Option B - Kismet + `kismetdb_to_wiglecsv`
 
 If you already capture with [Kismet](https://www.kismetwireless.net/), the
 official conversion tool ships with it:
@@ -457,7 +457,7 @@ kismetdb_to_wiglecsv \
 ./run.sh wardrive.csv --chunk-size 10000
 ```
 
-### Option C — hcxdumptool + `hcxpcapngtool`
+### Option C - hcxdumptool + `hcxpcapngtool`
 
 If you run [hcxdumptool](https://github.com/ZerBea/hcxdumptool), pipe the
 pcapng through `hcxpcapngtool --csv=...`:
@@ -467,7 +467,7 @@ hcxpcapngtool --csv=wardrive.csv capture.pcapng
 ./run.sh wardrive.csv --chunk-size 10000
 ```
 
-### Option D — Roll your own
+### Option D - Roll your own
 
 The WiGLE-1.6 CSV format is two header lines followed by data rows. The
 columns are:
@@ -495,7 +495,7 @@ aa:bb:cc:dd:ee:ff,ExampleSSID,[WPA2-PSK-CCMP][ESS],2026-05-23 12:00:00,6,-55,41.
 The point of a leaderboard is showing up consistently. Instead of pushing by
 hand every time, set a timer and forget it.
 
-**Fastest path — let the tool install the timer for you.** `--schedule` writes
+**Fastest path, let the tool install the timer for you.** `--schedule` writes
 the right artifact for your OS (systemd user unit on Linux-with-systemd, cron
 entry on Mac / Linux-without-systemd, scheduled task on Windows). Defaults to
 `--from-wigle` daily at 03:00 with `--chunk-size 10000`, in dry-run mode the
@@ -529,12 +529,12 @@ all. Swap the command in any recipe below for:
 ```
 
 **The file-based version:** always export (or save) your WiGLE file to the
-*same path* — e.g. `wardrive.wiglecsv.gz` — and point a timer at that path.
+*same path*, e.g. `wardrive.wiglecsv.gz`, and point a timer at that path.
 Each run re-pushes the file; WDGWars dedupes server-side, so re-sending the
 same data is harmless and still picks up any new rows or merged location
 samples. Pick the recipe for your OS below.
 
-### Windows — Task Scheduler
+### Windows - Task Scheduler
 
 Easiest if you wardrive with your phone and copy the export to your PC. Save a
 tiny batch file, then point Task Scheduler at it.
@@ -546,7 +546,7 @@ tiny batch file, then point Task Scheduler at it.
 python "C:\Tools\wigle-to-wdgwars\wigle_to_wdgwars.py" "C:\Wardrives\wardrive.wiglecsv.gz" --key YOUR_API_KEY_HERE --chunk-size 10000 >> "C:\Wardrives\push.log" 2>&1
 ```
 
-Create the timer (run once in an **admin** PowerShell or Command Prompt — this
+Create the timer (run once in an **admin** PowerShell or Command Prompt, this
 fires it daily at 3am):
 
 ```powershell
@@ -560,7 +560,7 @@ To change the time, run the same `schtasks /Create` again with a new `/ST`, or
 edit it in the Task Scheduler GUI (search "Task Scheduler" in the Start menu →
 find "WDGWars Push").
 
-### cron (Linux / Mac) — push every 6 hours
+### cron (Linux / Mac) - push every 6 hours
 
 ```cron
 # m h dom mon dow command
@@ -571,7 +571,7 @@ Point it at whatever file you keep fresh (a `.csv` or `.gz` both work). The
 tool persists cooldown state to `~/.config/wigle-to-wdgwars/cooldown.json`, so
 back-to-back jobs that catch a 429 won't hammer the server.
 
-### systemd timer — daily at 03:00
+### systemd timer - daily at 03:00
 
 `~/.config/systemd/user/wdgwars-push.service`:
 
@@ -643,7 +643,7 @@ testing against a local mock or staging server without flipping
 ```
 
 Aircraft JSON uploads still use the signed `/endpoint/upload/` endpoint
-unchanged — if you need to redirect those, use Muninn's `--api-url`.
+unchanged. If you need to redirect those, use Muninn's `--api-url`.
 
 ---
 
@@ -659,7 +659,7 @@ unchanged — if you need to redirect those, use Muninn's `--api-url`.
 
 | Method | Path | Purpose | Auth | Body |
 |---|---|---|---|---|
-| `GET` | `/api/me` | Validate key, read stats/badges/gang | `X-API-Key: <key>` | — |
+| `GET` | `/api/me` | Validate key, read stats/badges/gang | `X-API-Key: <key>` | - |
 | `POST` | `/api/upload-csv` | Bulk Wi-Fi/BLE ingest | `X-API-Key: <key>` | `multipart/form-data`, field `file=` (WiGLE-1.6 CSV) |
 | `POST` | `/api/upload/` | Signed JSON ingest (aircraft, mesh, …) | `X-API-Key: <key>` | `application/json` envelope, see below |
 
@@ -705,15 +705,15 @@ unchanged — if you need to redirect those, use Muninn's `--api-url`.
 }
 ```
 
-- `imported` — new fingerprints accepted into the user's account.
-- `captured` — newly-flagged "first to capture" wins (rare).
-- `duplicates` — rows the server has already seen from this user.
-- `no_gps` — rows skipped for missing lat/lon.
-- `bad_rows` — malformed rows the parser rejected.
-- `merged_samples` — observations folded into an existing fingerprint as
+- `imported`: new fingerprints accepted into the user's account.
+- `captured`: newly-flagged "first to capture" wins (rare).
+- `duplicates`: rows the server has already seen from this user.
+- `no_gps`: rows skipped for missing lat/lon.
+- `bad_rows`: malformed rows the parser rejected.
+- `merged_samples`: observations folded into an existing fingerprint as
   additional signal samples.
-- `total` — **server-wide** row count across all users (not the caller's).
-- `cooldown` — when nonzero, seconds the server is asking the client to
+- `total`: **server-wide** row count across all users (not the caller's).
+- `cooldown`: when nonzero, seconds the server is asking the client to
   wait before the next upload.
 
 ### Rate limiting
@@ -736,14 +736,14 @@ request**. Cloudflare in front has a **120-second response timeout**.
 Anything taking longer returns:
 
 ```
-HTTP 524 — origin_response_timeout
+HTTP 524, origin_response_timeout
 ```
 
-to your client, but **the origin keeps ingesting** — you'll see the rows
+to your client, but **the origin keeps ingesting**: you'll see the rows
 land in your `/api/me` count even though your client errored.
 
 **Mitigation:** chunk the CSV into ≤10 000-row chunks. Each chunk lands in
-15–35 s comfortably under the cap. This tool does it automatically with
+15, 35 s comfortably under the cap. This tool does it automatically with
 `--chunk-size 10000`. Each chunk re-sends the WiGLE 2-line header so the
 server treats it as a valid file.
 
@@ -753,9 +753,9 @@ server treats it as a valid file.
 |---|---|---|
 | 400 | `{"error":"Invalid data format"}` | Most likely you POSTed a CSV to `/api/upload` (no `-csv` suffix). Wrong endpoint, not a malformed file. |
 | 401 | `{"error":"Invalid API key"}` | Bad/expired key, or you used `Authorization: Bearer …` instead of `X-API-Key:`. |
-| 409 | `{"error":"duplicate_upload","duplicate_at":"…"}` | The server already holds this exact file byte-for-byte (e.g. an hourly cron re-sending the same `--since` window). Treated as success since v1.6.1 — exit 0, `duplicate_upload: true` in the result JSON, high-water mark untouched. Any other 409 body still fails. |
+| 409 | `{"error":"duplicate_upload","duplicate_at":"…"}` | The server already holds this exact file byte-for-byte (e.g. an hourly cron re-sending the same `--since` window). Treated as success since v1.6.1, exit 0, `duplicate_upload: true` in the result JSON, high-water mark untouched. Any other 409 body still fails. |
 | 429 | `{"error":"Another upload is already being processed …","retry_after":N}` | Per-account queue. Wait `retry_after` seconds. |
-| 413 | `{"error":"payload-too-large","max_bytes":15728640,"received":N,...}` | Body exceeded the 15 MB hosting cap LOCOSP added 2026-06-05. The client auto-bisects the offending chunk and retries both halves — no flag needed. |
+| 413 | `{"error":"payload-too-large","max_bytes":15728640,"received":N,...}` | Body exceeded the 15 MB hosting cap LOCOSP added 2026-06-05. The client auto-bisects the offending chunk and retries both halves, no flag needed. |
 | 524 | (HTML from Cloudflare) | Origin timed out. Chunk smaller. Rows are still ingesting on the origin. |
 
 ### WiGLE API (the `--from-wigle` pull side)
@@ -774,7 +774,7 @@ The tool lists the newest `--wigle-latest N` transactions and downloads each as
 CSV. This mirrors the contract used by the community tool
 [joelkoen/wigledl](https://github.com/joelkoen/wigledl). WiGLE enforces its own
 per-account query limits, so pulling your whole history in one run can hit a
-rate cap — pulling the latest upload (the default) stays well under it.
+rate cap, pulling the latest upload (the default) stays well under it.
 
 ---
 
@@ -811,7 +811,7 @@ The inner payload (pre-base64) is:
 }
 ```
 
-`networks` and `meshcore_nodes` are currently passed empty by this tool —
+`networks` and `meshcore_nodes` are currently passed empty by this tool,
 Wi-Fi/BLE goes through the CSV path because of better dedup and merging
 behavior server-side.
 
@@ -864,38 +864,38 @@ have records in this shape (e.g. exported from your own pipeline).
 
 ## Troubleshooting
 
-**`{"error":"Invalid data format"}`** — You hit `/api/upload` (signed) with
+**`{"error":"Invalid data format"}`**: You hit `/api/upload` (signed) with
 a CSV. The CSV endpoint is `/api/upload-csv`. This tool uses the right
 endpoint by default; only hits when something rewrites the URL.
 
-**`HTTP 401`** — Bad key, or you set `Authorization: Bearer …` somewhere.
+**`HTTP 401`**: Bad key, or you set `Authorization: Bearer …` somewhere.
 Run `--whoami` to confirm. Make sure your key is the full string from the
 WDGWars account page, no extra whitespace.
 
-**`HTTP 429` repeating forever** — Your previous upload is still queued
+**`HTTP 429` repeating forever**: Your previous upload is still queued
 server-side. Wait the `retry_after` seconds (the tool does this for you on
 the next run). If a stale `cooldown.json` is causing >15 min sleeps, delete
 it: `rm ~/.config/wigle-to-wdgwars/cooldown.json`.
 
-**`HTTP 524`** — Cloudflare gave up waiting on the origin. Add or lower
+**`HTTP 524`**: Cloudflare gave up waiting on the origin. Add or lower
 `--chunk-size` (try 5000 if 10000 still trips it on a slow link). Your
-data is probably ingesting anyway — check `--whoami` counts after.
+data is probably ingesting anyway, check `--whoami` counts after.
 
-**`imported: 0, duplicates: <huge>`** — Expected on the second push of the
+**`imported: 0, duplicates: <huge>`**: Expected on the second push of the
 same CSV. WDGWars dedupes per-fingerprint. Only new BSSIDs/SSIDs (or new
 locations for existing ones) count.
 
-**`bad_rows: <nonzero>`** — Some rows didn't parse. Most often missing or
+**`bad_rows: <nonzero>`**: Some rows didn't parse. Most often missing or
 malformed `FirstSeen`, or a non-numeric `Lat`/`Lon`. Validate with:
 
 ```bash
 awk -F, 'NR>2 && (length($1)!=17 || $7+0==0) {print NR": "$0}' wardrive.csv
 ```
 
-**Script hangs on a chunk for minutes** — The origin is grinding through a
+**Script hangs on a chunk for minutes**: The origin is grinding through a
 large chunk. urlopen timeout is 600 s in this tool. If you want to bail
 out and let the origin finish in the background, Ctrl-C and check
-`--whoami` 30–60 s later.
+`--whoami` 30, 60 s later.
 
 ---
 
@@ -914,10 +914,10 @@ The wardriving + WDGWars ecosystem of uploaders:
 
 Cross-cutting links:
 
-- [WiGLE](https://wigle.net/) — the original wardriving network.
-- [WiGLE WiFi Wardriving (Android)](https://play.google.com/store/apps/details?id=net.wigle.wigleandroid) — easiest capture stack.
-- [Kismet](https://www.kismetwireless.net/) — the open-source wireless detector / sniffer / IDS.
-- [hcxdumptool](https://github.com/ZerBea/hcxdumptool) — fast 802.11 capture for handshake hunting; pairs with `hcxpcapngtool --csv`.
+- [WiGLE](https://wigle.net/), the original wardriving network.
+- [WiGLE WiFi Wardriving (Android)](https://play.google.com/store/apps/details?id=net.wigle.wigleandroid), easiest capture stack.
+- [Kismet](https://www.kismetwireless.net/), the open-source wireless detector / sniffer / IDS.
+- [hcxdumptool](https://github.com/ZerBea/hcxdumptool), fast 802.11 capture for handshake hunting; pairs with `hcxpcapngtool --csv`.
 
 ---
 
@@ -930,7 +930,7 @@ MIT. Use it, fork it, send a PR.
 ## Acknowledgments
 
 The reverse-engineered API documentation here was cross-checked against
-the open-source uploaders in the [Related tools](#related-tools) table —
+the open-source uploaders in the [Related tools](#related-tools) table,
 in particular `Hamspiced/piglet` and `7h30th3r0n3/Raspyjack`. The
 chunking-around-Cloudflare-524 workaround is well-documented across the
 community; this tool just bakes it in by default.

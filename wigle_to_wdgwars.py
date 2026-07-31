@@ -78,7 +78,7 @@ WIGLE_CSV = "https://api.wigle.net/api/v2/file/csv/{transid}"
 
 USER_AGENT = f"wigle-to-wdgwars/{__version__} (+{GITHUB_URL})"
 
-# CLI tool — keep the v1.0 stderr-line-per-event behavior so cron logs
+# CLI tool - keep the v1.0 stderr-line-per-event behavior so cron logs
 # look familiar. Library consumers can override.
 if not logging.getLogger().handlers:
     logging.basicConfig(
@@ -212,7 +212,7 @@ def _refresh_wrappers(script_dir: Path) -> None:
     them too. The list is hard-coded rather than fetched from a remote
     manifest so the update path can never be steered into writing
     arbitrary filenames. A wrapper that fails to download is skipped
-    with a warning — the main-script update is never rolled back over a
+    with a warning. The main-script update is never rolled back over a
     wrapper. Wrappers the user deleted are respected and not re-planted.
     """
     for name in WRAPPER_SCRIPTS:
@@ -236,7 +236,7 @@ def _refresh_wrappers(script_dir: Path) -> None:
 
 def _pip_install_requirements(script_dir: Path) -> None:
     """Best-effort `python -m pip install -r requirements.txt` against the
-    interpreter currently running wigle-to-wdgwars. Never fails the caller —
+    interpreter currently running wigle-to-wdgwars. Never fails the caller,
     prints a clear hint if pip is missing or the install errors, so the
     update return code still reflects the script update itself."""
     req = script_dir / "requirements.txt"
@@ -345,9 +345,9 @@ def _cooldown_check_and_sleep() -> None:
 
     Note: gungnir uses its OWN config dir convention for the cooldown
     file (`<config_dir>/cooldown.json` for `tool="wigle-to-wdgwars"`).
-    On POSIX this is `~/.config/wigle-to-wdgwars/cooldown.json` —
+    On POSIX this is `~/.config/wigle-to-wdgwars/cooldown.json`,
     byte-identical path to v1.0. On Windows this moves to
-    `%APPDATA%/wigle-to-wdgwars/cooldown.json` — different from v1.0
+    `%APPDATA%/wigle-to-wdgwars/cooldown.json`, different from v1.0
     but cooldown state is ephemeral, so the migration is harmless.
     """
     gungnir.cooldown.check_and_sleep("wigle-to-wdgwars")
@@ -409,7 +409,7 @@ def _write_secret_file(path: Path, value: str) -> None:
 
     Refuses to write through a symlink (avoids the classic dotfile-symlink
     redirect-attack vector when the config dir is writable by another user).
-    chmod is best-effort on Windows, where the bit may not stick — the
+    chmod is best-effort on Windows, where the bit may not stick, the
     config dir lives under the user's profile anyway.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -437,7 +437,7 @@ def save_key(key: str) -> None:
     _write_secret_file(DEFAULT_KEY_FILE, key.strip())
     print(f"[wigle-to-wdgwars] saved WDGWars API key to {DEFAULT_KEY_FILE}",
           file=sys.stderr)
-    print(f"[wigle-to-wdgwars] (file mode 600 — only your user can read it)",
+    print(f"[wigle-to-wdgwars] (file mode 600. Only your user can read it)",
           file=sys.stderr)
 
 
@@ -446,7 +446,7 @@ def save_wigle_token(token: str) -> None:
     _write_secret_file(WIGLE_KEY_FILE, token.strip())
     print(f"[wigle-to-wdgwars] saved WiGLE token to {WIGLE_KEY_FILE}",
           file=sys.stderr)
-    print(f"[wigle-to-wdgwars] (file mode 600 — only your user can read it)",
+    print(f"[wigle-to-wdgwars] (file mode 600. Only your user can read it)",
           file=sys.stderr)
 
 
@@ -455,7 +455,7 @@ def save_wigle_token(token: str) -> None:
 def check_whoami(key: str) -> int:
     """GET /api/me to validate a WDGWars key. Returns 0 on success, 1 on fail.
 
-    Read-only — safe to call during setup without touching the upload
+    Read-only, safe to call during setup without touching the upload
     queue or the user's leaderboard counts.
     """
     return _client.whoami(key)
@@ -465,7 +465,7 @@ def check_wigle_token(token: str, timeout: float = 30) -> int:
     """Validate a WiGLE 'Encoded for use' token by listing one transaction.
 
     Hits /api/v2/file/transactions?pagestart=0&pageend=1. Returns 0 on
-    HTTP 200, 1 otherwise. Read-only — no uploads, no state changes.
+    HTTP 200, 1 otherwise. Read-only, no uploads, no state changes.
     """
     try:
         status, body = _wigle_get(
@@ -505,7 +505,7 @@ def _prompt_yes_no(question: str, default: bool = True) -> bool:
     On EOF / Ctrl+C, returns the default so non-interactive runs don't hang.
     Always emits a newline after the answer so the next section header
     doesn't collide with the prompt line when stdin is piped (interactive
-    TTY input gets its own newline from the terminal — but piped input
+    TTY input gets its own newline from the terminal, but piped input
     doesn't, leaving section headers glued onto the prompt)."""
     suffix = " [Y/n] " if default else " [y/N] "
     piped = not sys.stdin.isatty()
@@ -586,8 +586,8 @@ def _prompt_int(label: str, default: int, *, min_val: int = 0,
 def interactive_setup() -> int:
     """First-run setup. Prompts for both API keys, validates each, saves.
 
-    Order: WDGWars first (mandatory — without it, nothing uploads),
-    WiGLE second (optional — only needed for --from-wigle pull mode).
+    Order: WDGWars first (mandatory, without it, nothing uploads),
+    WiGLE second (optional, only needed for --from-wigle pull mode).
     Then offers to install a daily timer. Each step is independently
     skippable; cancelling later steps does not undo earlier ones.
 
@@ -597,7 +597,7 @@ def interactive_setup() -> int:
     """
     print("", file=sys.stderr)
     print("─" * 60, file=sys.stderr)
-    print(" wigle-to-wdgwars — first-time setup", file=sys.stderr)
+    print(" wigle-to-wdgwars, first-time setup", file=sys.stderr)
     print("─" * 60, file=sys.stderr)
     print("", file=sys.stderr)
     print(" This walks you through saving your two API keys and (optionally)", file=sys.stderr)
@@ -617,10 +617,10 @@ def interactive_setup() -> int:
         return 1
 
     if saved_wdg == 0:
-        # WDGWars key didn't get saved (declined or missing) — no point
+        # WDGWars key didn't get saved (declined or missing), no point
         # offering a timer that can't upload.
         print("", file=sys.stderr)
-        print(" Skipping schedule setup — no WDGWars key saved.", file=sys.stderr)
+        print(" Skipping schedule setup, no WDGWars key saved.", file=sys.stderr)
         print(" Re-run --setup once you have one.", file=sys.stderr)
         return 0
 
@@ -656,7 +656,7 @@ def _setup_wdgwars_key() -> int:
     while True:
         key = _prompt_secret(" Paste your WDGWars API key: ")
         if not key:
-            print(" (empty input — try again, or Ctrl+C to cancel)",
+            print(" (empty input, try again, or Ctrl+C to cancel)",
                   file=sys.stderr)
             if not _prompt_yes_no(" Keep trying?", default=True):
                 return -1
@@ -698,7 +698,7 @@ def _setup_wigle_token() -> int:
     while True:
         token = _prompt_secret(" Paste your WiGLE 'Encoded for use' token: ")
         if not token:
-            print(" (empty input — try again, or Ctrl+C to cancel)",
+            print(" (empty input, try again, or Ctrl+C to cancel)",
                   file=sys.stderr)
             if not _prompt_yes_no(" Keep trying?", default=True):
                 return -1
@@ -738,7 +738,7 @@ def parse_duration(s: str) -> int:
     """Parse a duration like '7d', '24h', '30m', '168h', '604800s' to seconds.
 
     A bare integer means days (matches the README phrasing 'past N days').
-    Returns 0 for ``s == "0"`` — caller treats 0 as 'no filter'."""
+    Returns 0 for ``s == "0"``, caller treats 0 as 'no filter'."""
     m = _DURATION_RE.match(s or "")
     if not m:
         raise ValueError(f"bad duration {s!r}: expected e.g. 7d, 24h, 30m")
@@ -1160,7 +1160,7 @@ def _post_signed(payload: dict, key: str) -> tuple[int, dict, float]:
         etc.) instead of pre-building the payload dict.
 
     Returns (status, parsed_response, duration_s). Status is 200 on
-    success, otherwise the underlying gungnir rc (1) — the exact HTTP
+    success, otherwise the underlying gungnir rc (1), the exact HTTP
     code is no longer surfaced for non-2xx responses (gungnir handles
     them internally with retry/backoff/cooldown).
     """
@@ -1176,7 +1176,7 @@ def _post_signed(payload: dict, key: str) -> tuple[int, dict, float]:
             slot_kwargs[name] = lst
             break  # first-non-empty wins; matches v1.0 behavior in practice
     if not slot_kwargs:
-        # Empty payload — treat as success-noop to mirror v1.0 semantics
+        # Empty payload, treat as success-noop to mirror v1.0 semantics
         return 200, {"ok": True, "imported": 0}, time.monotonic() - t0
     inner_payload = gungnir.build_payload(**slot_kwargs)
     rc, data = gungnir.transport.send_chunk(
@@ -1371,7 +1371,7 @@ def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
         print(f"[wigle] skipping {len(skipped)} already-processed upload(s): "
               f"{', '.join(skipped)} (use --reprocess to force)", file=sys.stderr)
     if not pending:
-        print("[wigle] nothing new to pull — all recent uploads already processed",
+        print("[wigle] nothing new to pull, all recent uploads already processed",
               file=sys.stderr)
         return 0
 
@@ -1401,7 +1401,7 @@ def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
 #
 # Default schedule: daily at 03:00 local time, pulling the latest WiGLE
 # upload and pushing it. WiGLE's per-account query budget makes a daily
-# push the right cadence — hourly pulls eat your quota fast for no win.
+# push the right cadence - hourly pulls eat your quota fast for no win.
 # A timestamped marker comment goes into every unit so --unschedule can
 # find and remove them cleanly.
 
@@ -1464,7 +1464,7 @@ def _schedule_argv(use_from_wigle: bool, chunk_size: int) -> list[str]:
     """Build the wigle_to_wdgwars argv that the scheduler will run.
 
     Always uses the saved keys (no --key / --wigle-key on the command
-    line — that would leak them into the unit file / crontab / schtasks
+    line. That would leak them into the unit file / crontab / schtasks
     output, all of which are readable by other processes on the box).
     """
     cmd = [_python_exe(), str(_script_path())]
@@ -1480,7 +1480,7 @@ def render_systemd_units(time_hhmm: str, use_from_wigle: bool,
                          chunk_size: int, python_exe: str,
                          script_path: Path,
                          dry_run: bool = False) -> dict[str, str]:
-    """Render (service, timer) unit text. Pure — does not touch disk."""
+    """Render (service, timer) unit text. Pure. Does not touch disk."""
     time_hhmm = _validate_hhmm(time_hhmm)
     argv = _schedule_argv(use_from_wigle, chunk_size)
     # Swap in the python_exe + script_path arguments so callers can
@@ -1698,7 +1698,7 @@ def install_windows_task(time_hhmm: str, use_from_wigle: bool,
           file=sys.stderr)
     print(f"[schedule] run now: schtasks /Run /TN {WINDOWS_TASK_NAME}",
           file=sys.stderr)
-    print(f"[schedule] (Task Scheduler doesn't capture stdout — to see "
+    print(f"[schedule] (Task Scheduler doesn't capture stdout, to see "
           f"what a run did, fire it from PowerShell directly.)",
           file=sys.stderr)
     return 0
@@ -1722,11 +1722,11 @@ def interactive_schedule_setup(have_wigle: bool = False) -> int:
 
     `have_wigle=True` lets the wizard offer --from-wigle as the default;
     `False` falls back to instructing the user to point cron at a file
-    path they refresh themselves (no installer for that — too many
+    path they refresh themselves (no installer for that, too many
     user-specific assumptions about where the file lives)."""
     print("", file=sys.stderr)
     print("─" * 60, file=sys.stderr)
-    print(" wigle-to-wdgwars — schedule setup", file=sys.stderr)
+    print(" wigle-to-wdgwars, schedule setup", file=sys.stderr)
     print("─" * 60, file=sys.stderr)
     print("", file=sys.stderr)
 
@@ -1847,7 +1847,7 @@ def cmd_schedule_headless(args) -> int:
     # (we'd need to know where the user puts their CSV); README handles it.
     if not WIGLE_KEY_FILE.exists() and not os.environ.get("WIGLE_API_KEY"):
         sys.exit("--schedule needs a saved WiGLE token (run --setup first), "
-                 "or write your own unit pointing at a local CSV — "
+                 "or write your own unit pointing at a local CSV, "
                  "see README.md.")
     mech = _schedule_mechanism()
     if mech == "systemd":
@@ -1948,7 +1948,7 @@ def main() -> int:
                     help="with --from-wigle, re-pull uploads even if already recorded "
                          "as processed (ignores the processed-transids state file)")
     ap.add_argument("--setup", action="store_true",
-                    help="interactive first-time setup — prompts for your "
+                    help="interactive first-time setup, prompts for your "
                          "WDGWars and WiGLE keys, validates them, saves them "
                          "to ~/.config/wigle-to-wdgwars/ (mode 600), and "
                          "optionally installs a daily timer.")
@@ -1985,7 +1985,7 @@ def main() -> int:
         return _run_update()
 
     # --api-url overrides the CSV upload endpoint (the primary path).
-    # Aircraft JSON uploads still use the signed endpoint — override
+    # Aircraft JSON uploads still use the signed endpoint, override
     # there belongs in Muninn, not wigle.
     if args.api_url:
         ENDPOINT = args.api_url
@@ -2005,7 +2005,7 @@ def main() -> int:
             ap.error("--preview needs a CSV path")
         return preview_csv(Path(args.csv))
 
-    # Key management / scheduling modes — handle before requiring an input
+    # Key management / scheduling modes, handle before requiring an input
     if args.setup:
         return interactive_setup()
     if args.save_key:
@@ -2024,7 +2024,7 @@ def main() -> int:
             return cmd_schedule_headless(args)
         # Interactive: needs a saved WDGWars key; offer to set up if not.
         if not DEFAULT_KEY_FILE.exists() and not os.environ.get("WDGWARS_API_KEY"):
-            print("[wigle-to-wdgwars] no WDGWars key saved — running --setup "
+            print("[wigle-to-wdgwars] no WDGWars key saved, running --setup "
                   "first.", file=sys.stderr)
             return interactive_setup()
         return interactive_schedule_setup(have_wigle=WIGLE_KEY_FILE.exists()

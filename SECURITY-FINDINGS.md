@@ -1,6 +1,6 @@
-# Security review — findings & disposition
+# Security review - findings & disposition
 
-> **Update 2026-07-18** — SonarCloud's taint engine raised the two
+> **Update 2026-07-18**: SonarCloud's taint engine raised the two
 > `pythonsecurity:S8707` findings this table already dispositions (the
 > operator-chosen `csv` read in `_read_csv_bytes` and the `--aircraft-json`
 > load). Per the table below they are accept-by-design for an operator-run
@@ -10,13 +10,13 @@
 > dispositions are keyed to issue-tracking matches and silently reset when
 > the file changes shape, which is exactly how they re-raised and
 > hard-failed the gate on 2026-07-18. Any *new* S8707 in this file will be
-> ignored too — reviewers must keep this table honest when adding
+> ignored too. Reviewers must keep this table honest when adding
 > path-handling code.
 
 On **2026-06-21**, as part of bringing the WDGoWars feeder family onto a common
 gated CI pipeline (pytest + coverage → SonarCloud → Snyk), `wigle_to_wdgwars.py`
 was reviewed for the same classes of issue that SonarCloud's SAST flagged in the
-sibling **adsb-to-wdgwars (Muninn)** repo — path traversal, command/argument
+sibling **adsb-to-wdgwars (Muninn)** repo, path traversal, command/argument
 injection in scheduler artifacts, insecure temp-directory use, and unsafe
 database opens.
 
@@ -29,11 +29,11 @@ posture is now backed by regression tests ([`tests/test_security.py`](tests/test
 
 | Muninn finding class | Status in wigle-to-wdgwars |
 |---|---|
-| **S2083** — path traversal into a watch state file | **N/A** — wigle has no watch mode. It writes a `processed-transids.json` state file (v1.6.0), but at a **fixed** path under `~/.config/wigle-to-wdgwars/`, not one derived from a user-supplied watched directory — so there is no traversal vector. It uploads a CSV/JSON the operator names; it never builds a second path from one of those. |
-| **S5443** — use of a publicly-writable / `/tmp` directory | **N/A** — no `tempfile`, `gettempdir`, or hardcoded `/tmp` path anywhere. Config lives under `~/.config/wigle-to-wdgwars/`. |
-| **S8706** — SQLite connection built from a filename | **N/A** — wigle has no SQLite/`.sqb` support. |
-| **S6350 / S8705** — command / OS-command argument from untrusted data | **Already defended** — the scheduler renderers (`render_systemd_units`, `render_cron_line`, `render_schtasks_create`) take only trusted inputs (`sys.executable`, `__file__`, a validated `HH:MM`, an int chunk size, and a bool). No value from `argv` reaches them. Every argv element is still passed through `_shell_quote()` for systemd/cron, and the time is validated by `_validate_hhmm()`. |
-| **S8707 / S6549** — path construction from CLI args | **Accept-by-design** — the only CLI path inputs are the positional `csv` and `--aircraft-json FILE`. Both are **read-only** (`read_bytes`/`read_text`), guarded by an `is_file()` check, and chosen by the operator. As documented in `SECURITY.md`, this is a local operator CLI: there is no sandbox root to confine to. |
+| **S2083**: path traversal into a watch state file | **N/A**: wigle has no watch mode. It writes a `processed-transids.json` state file (v1.6.0), but at a **fixed** path under `~/.config/wigle-to-wdgwars/`, not one derived from a user-supplied watched directory. So there is no traversal vector. It uploads a CSV/JSON the operator names; it never builds a second path from one of those. |
+| **S5443**: use of a publicly-writable / `/tmp` directory | **N/A**: no `tempfile`, `gettempdir`, or hardcoded `/tmp` path anywhere. Config lives under `~/.config/wigle-to-wdgwars/`. |
+| **S8706**: SQLite connection built from a filename | **N/A**: wigle has no SQLite/`.sqb` support. |
+| **S6350 / S8705**: command / OS-command argument from untrusted data | **Already defended**: the scheduler renderers (`render_systemd_units`, `render_cron_line`, `render_schtasks_create`) take only trusted inputs (`sys.executable`, `__file__`, a validated `HH:MM`, an int chunk size, and a bool). No value from `argv` reaches them. Every argv element is still passed through `_shell_quote()` for systemd/cron, and the time is validated by `_validate_hhmm()`. |
+| **S8707 / S6549**: path construction from CLI args | **Accept-by-design**: the only CLI path inputs are the positional `csv` and `--aircraft-json FILE`. Both are **read-only** (`read_bytes`/`read_text`), guarded by an `is_file()` check, and chosen by the operator. As documented in `SECURITY.md`, this is a local operator CLI: there is no sandbox root to confine to. |
 
 ## Existing defenses this review confirmed (now under test)
 
@@ -55,7 +55,7 @@ posture is now backed by regression tests ([`tests/test_security.py`](tests/test
 ## A note for when SonarCloud is enabled
 
 This repo is not yet imported into SonarCloud. Once it is (and the `SONAR_TOKEN`
-/ `SNYK_TOKEN` secrets are added — see [CI.md](CI.md)), the scanner may still
+/ `SNYK_TOKEN` secrets are added, see [CI.md](CI.md)), the scanner may still
 raise **security hotspots** (review-required, not vulnerabilities) on the
 read-only CLI path inputs and the `subprocess` calls in the installers. The
 disposition above is the rationale to mark those *Safe* / *Accepted*: the inputs

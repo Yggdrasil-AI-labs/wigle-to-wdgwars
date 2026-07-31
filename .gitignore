@@ -6,7 +6,7 @@ venv/
 .env
 .envrc
 
-# Local secrets / state — never commit
+# Local secrets / state - never commit
 *.key
 wdgwars.key
 cooldown.json

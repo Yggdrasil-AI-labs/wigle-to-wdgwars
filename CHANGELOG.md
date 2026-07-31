@@ -13,7 +13,7 @@ project uses [Semantic Versioning](https://semver.org/).
   the family bug where a fix living in a wrapper could never reach
   ZIP-installed users through self-update (they were told "you are
   already on the latest" while keeping broken wrappers). The list is
-  hard-coded — not a remote manifest — so the update path can never be
+  hard-coded, not a remote manifest. So the update path can never be
   steered into writing arbitrary filenames. Wrapper download failures
   warn and continue (the main-script update is never rolled back over a
   wrapper); deleted wrappers are respected and not re-planted; `.sh`
@@ -35,7 +35,7 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ### CI quality gates + security review (landed unversioned, ships in this tag)
 
-Tooling and CI only — originally held in an Unreleased section because it
+Tooling and CI only, originally held in an Unreleased section because it
 changed no `wigle_to_wdgwars.py` behavior; folded into 1.6.2 now that a
 release is being cut.
 
@@ -47,20 +47,20 @@ jobs stay red until the repo is imported into SonarCloud and the
 and coverage stage is independent and passes on its own.
 
 A review against the SonarCloud SAST finding classes found nothing to
-remediate — the scheduler arguments are shell-quoted, secrets never reach the
+remediate. The scheduler arguments are shell-quoted, secrets never reach the
 command line, and the secret-file writer refuses symlinks and uses mode 600.
 See SECURITY-FINDINGS.md.
 
 ### Added
 
-- `.github/workflows/ci-quality-gates.yml` — gated quality + security pipeline.
+- `.github/workflows/ci-quality-gates.yml`: gated quality + security pipeline.
 - `sonar-project.properties`, `requirements-dev.txt`, `pyproject.toml`
   (pytest + coverage config with a regression floor), and `CI.md`.
-- `tests/test_security.py` — regression tests locking in the existing
+- `tests/test_security.py`: regression tests locking in the existing
   defenses (shell-quoting, no-secrets-in-argv, safe secret-file writes).
-- `SECURITY-FINDINGS.md` — the security review write-up; pointer added to
+- `SECURITY-FINDINGS.md`: the security review write-up; pointer added to
   `SECURITY.md`.
-- `tests/test_409_duplicate.py` — regression tests for the v1.6.1
+- `tests/test_409_duplicate.py`: regression tests for the v1.6.1
   duplicate_upload handling (exit 0, high-water mark untouched, other 409
   bodies still fail). Clears the SonarCloud new-code coverage condition the
   v1.6.1 commit tripped.
@@ -128,7 +128,7 @@ on the LOCOSP daily cap and the Cloudflare per-IP `/api/*` quota.
 - `parse_duration(str) -> int` and `filter_csv_since(bytes, datetime)`
   public helpers. Sibling tools (Muninn, Heimdall) can vendor them if
   they want the same gate; semantics match the wider feeder family.
-- `tests/test_since_filter.py` — 14 tests covering the duration
+- `tests/test_since_filter.py`: 14 tests covering the duration
   parser, the row filter (kept/dropped accounting, header
   preservation, missing-FirstSeen passthrough, unparseable rows), the
   apply helper, and the upload-path skip when the window is empty.
@@ -210,7 +210,7 @@ flag parity with the family.
   Useful for offline or privacy-conscious setups, and for CI.
 - `--api-url URL`: override the CSV upload endpoint. Useful for
   staging hosts or local mocks. The signed aircraft-JSON endpoint
-  (`/endpoint/upload/`) is unchanged — override there belongs in
+  (`/endpoint/upload/`) is unchanged. Override there belongs in
   Muninn.
 - Version-check banner: daily-cached probe of the GitHub releases
   API. Prints a non-blocking nudge if a newer tag is available.
@@ -249,9 +249,9 @@ real WDGoWars account.
   test process if a real WDGoWars API key OR WiGLE token is present
   at the canonical paths. Override with
   `WIGLE_TEST_ALLOW_LIVE_KEY=1`. Complements the existing per-test
-  `_NetworkBlockedCase` urlopen-blocker — the two cover different
+  `_NetworkBlockedCase` urlopen-blocker, the two cover different
   threat models (saved-key side vs network side).
-- `scripts/check_readme_examples.py` — README linter that catches
+- `scripts/check_readme_examples.py`: README linter that catches
   `python3 wigle_to_wdgwars.py ...` examples drifting outside the
   venv-teaching blocks. Ported from Muninn after the 2026-06-01 Pi24
   user hit `ModuleNotFoundError: No module named 'gungnir'`
@@ -261,7 +261,7 @@ real WDGoWars account.
 
 - gungnir pin bumped `v0.1.1 → v0.1.2`. Picks up the Cloudflare-L7
   bypass default URL (`/endpoint/upload/`) that ships in gungnir
-  v0.1.2 — every fresh `setup.sh` install now hits the rate-limit-safe
+  v0.1.2, every fresh `setup.sh` install now hits the rate-limit-safe
   endpoint by default.
 - Six README code-block examples rewritten from `python3
   wigle_to_wdgwars.py ...` to `./run.sh ...` so users following the
@@ -333,7 +333,7 @@ Now it's one command.
 - `_write_secret_file` refuses to write through a symlink, opens the
   file with mode 600 from the start (no umask race), and chmods on
   POSIX after the fact for belt-and-suspenders. Windows skips the
-  chmod test — the file lives under the user's profile, which is ACL'd
+  chmod test, the file lives under the user's profile, which is ACL'd
   to the user.
 
 ### Notes for existing users
@@ -363,7 +363,7 @@ into the wall.
 
 Found by sweeping the feeder family after a Pi24 user reported the
 same crash in Muninn's `setup.sh` ([adsb-to-wdgwars#15](https://github.com/HiroAlleyCat/adsb-to-wdgwars/pull/15)).
-Wigle has no wrapper scripts to fix — the install instructions live in
+Wigle has no wrapper scripts to fix, the install instructions live in
 the README only.
 
 Windows install block is unchanged. Windows Python has no PEP 668
@@ -371,7 +371,7 @@ enforcement, so `python -m pip install` still works there.
 
 ### Fixed
 
-- README "Option A — ZIP download" and "Option B — clone with git"
+- README "Option A. ZIP download" and "Option B, clone with git"
   now show `python3 -m venv .venv` followed by `.venv/bin/pip install`
   and `.venv/bin/python wigle_to_wdgwars.py`.
 - "Updating" section uses `.venv/bin/pip install --upgrade` to match.
@@ -389,7 +389,7 @@ downloaders, especially on Windows).
 
 The README also still claimed "There's nothing to install. The script
 is a single file, depends only on Python 3.10+, and uses `urllib`
-from stdlib — no `pip install`." That was true in v1.0 but became
+from stdlib. No `pip install`." That was true in v1.0 but became
 false the moment gungnir was added. New ZIP-download users following
 the README hit `ModuleNotFoundError: No module named 'gungnir'`.
 
@@ -400,7 +400,7 @@ the README hit `ModuleNotFoundError: No module named 'gungnir'`.
   `gungnir @ git+https://github.com/HiroAlleyCat/gungnir@v0.1.1`
   to
   `gungnir @ https://github.com/HiroAlleyCat/gungnir/archive/refs/tags/v0.1.1.tar.gz`
-  — pip fetches the tarball over plain HTTPS with stdlib `urllib`.
+, pip fetches the tarball over plain HTTPS with stdlib `urllib`.
   Same v0.1.1 tag, same gungnir bytes, same reproducibility.
 
 ### Documentation
@@ -414,10 +414,10 @@ the README hit `ModuleNotFoundError: No module named 'gungnir'`.
   the gungnir pin, so `git pull` (or re-extracting the ZIP) must be
   paired with `pip install --upgrade -r requirements.txt`.
 
-## [1.1.0] — extract signed-JSON transport to gungnir
+## [1.1.0] - extract signed-JSON transport to gungnir
 
 Structural refactor. **Multipart CSV upload (`/api/upload-csv`) and the
-WiGLE-side fetch are unchanged** — they stay as local code because
+WiGLE-side fetch are unchanged**. They stay as local code because
 gungnir doesn't handle multipart and doesn't speak the WiGLE API. The
 **signed-JSON path (`/api/upload/`)** moves to
 [gungnir](https://github.com/HiroAlleyCat/gungnir) 0.1.1, the same
@@ -429,12 +429,12 @@ library Muninn v2.0 sits on.
   locosp's recommendation (100-500 per request). The CLI flag
   `--aircraft-batch` default follows suit.
 - **`whoami()` output moved from stdout to structured stderr logs.**
-  v1.0 printed raw JSON; v1.1 emits a `key OK — user=X` line plus a
+  v1.0 printed raw JSON; v1.1 emits a `key OK, user=X` line plus a
   `wifi=… ble=… aircraft=… total=…` summary line. Cron jobs that
   parsed the raw JSON need to update.
 - **`_post_signed()` is now a thin shim over `gungnir.transport
   .send_chunk()`**. Status return is `200` on success or `1` on any
-  failure — the exact HTTP code for non-2xx is no longer surfaced
+  failure, the exact HTTP code for non-2xx is no longer surfaced
   (gungnir handles 5xx with retry + backoff internally).
 
 ### Added
@@ -461,7 +461,7 @@ library Muninn v2.0 sits on.
 
 - **API key file unchanged.** Local `load_key()` still reads from
   `~/.config/wigle-to-wdgwars/wdgwars.key`. The decision to keep this
-  path *outside* gungnir's per-OS convention is deliberate — Windows
+  path *outside* gungnir's per-OS convention is deliberate. Windows
   users of v1.0 stored the key under `~/.config/` (Linux-style) and
   we don't want to break their install.
 - **`cooldown.json` and `hwm.json` paths** now follow gungnir's per-OS
@@ -481,7 +481,7 @@ pip install -r requirements.txt  # pulls gungnir from the pinned tag
 
 No config-file changes. Cron stanzas keep working.
 
-## [1.0.0] — initial release
+## [1.0.0] - initial release
 
 ### Added
 - CLI tool to upload WiGLE 1.6 CSVs to the WDGoWars wardriving

@@ -38,7 +38,7 @@ jobs:
           python wigle_to_wdgwars.py --help | head -5
           python wigle_to_wdgwars.py --version
 
-      - name: Unit tests (offline — every test mocks the network)
+      - name: Unit tests (offline, every test mocks the network)
         run: python -m unittest discover tests/ -v
 
       - name: End-to-end smoke (venv + schedule artifact assertions)

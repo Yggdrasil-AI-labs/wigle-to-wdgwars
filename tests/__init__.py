@@ -3,7 +3,7 @@
 Safety net: refuse to start the test process if a live WDGWars API
 key (or WiGLE token) is configured at the canonical wigle-to-wdgwars
 paths. Tests that exercise upload paths read these the same way
-production runs do — a stray test invocation can post synthetic data
+production runs do. A stray test invocation can post synthetic data
 to LOCOSP's production endpoint. Same shape as Muninn's guard, added
 after the 2026-06-01 phantom-aircraft incident there.
 
@@ -13,7 +13,7 @@ To run tests with a real key present (sacrificial account on purpose):
 
 The guard runs once at import time and only flags the canonical key
 paths. Env vars (WDGWARS_API_KEY / WIGLE_API_KEY) and CLI flags are
-out of scope — those require explicit caller intent.
+out of scope, those require explicit caller intent.
 
 Note: this is a saved-key guard, not a network blocker. test_setup.py
 has its own per-test urlopen patcher that catches accidental network
@@ -31,8 +31,8 @@ def _key_paths() -> list[Path]:
     Mirrors wigle_to_wdgwars.py's CONFIG_DIR WITHOUT importing the
     module (which depends on gungnir, may not be present in a minimal
     CI environment). The production paths are POSIX-shaped on every OS
-    — even on Windows the tool reads from ~/.config/wigle-to-wdgwars/
-    rather than APPDATA — so this guard matches that exactly. If
+. Even on Windows the tool reads from ~/.config/wigle-to-wdgwars/
+    rather than APPDATA, so this guard matches that exactly. If
     production ever moves to XDG_CONFIG_HOME or APPDATA, update both
     here and in CONFIG_DIR together.
     """

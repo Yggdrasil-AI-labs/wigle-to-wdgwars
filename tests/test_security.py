@@ -1,7 +1,7 @@
 """Security-posture regression tests.
 
 Unlike the sibling adsb-to-wdgwars (Muninn), wigle-to-wdgwars had no
-SonarCloud SAST findings to remediate when its CI quality gate was added —
+SonarCloud SAST findings to remediate when its CI quality gate was added,
 its scheduler renderers already shell-quote every argument, the schedule argv
 deliberately keeps secrets off the command line, and the secret-file writer
 refuses to follow a symlink and creates with mode 600. See SECURITY-FINDINGS.md

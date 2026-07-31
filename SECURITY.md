@@ -26,7 +26,7 @@ That's the entire outbound footprint.
 
 - No telemetry or analytics. The only outbound traffic is to
   `wdgwars.pl`, `api.wigle.net`, `api.github.com`, and
-  `raw.githubusercontent.com` — each only on a flag the user invoked.
+  `raw.githubusercontent.com`, each only on a flag the user invoked.
   The GitHub calls happen on `--update` and on the daily version-check
   nudge, both of which can be skipped with `--no-version-check`.
 - No `eval`, no `exec`, no `os.system`, no `shell=True`. There are no
@@ -49,7 +49,7 @@ That's the entire outbound footprint.
   are the only write paths.
 - Keys are sent over HTTPS only: WDGWars in the `X-API-Key` request
   header, WiGLE in the `Authorization: Basic <token>` header. The TLS
-  context is Python's `ssl.create_default_context()` default — system
+  context is Python's `ssl.create_default_context()` default, system
   trust store, hostname verification on, TLS 1.2+.
 - Keys are never logged. Scheduled `--schedule` units read keys from
   the saved files at run-time; they are never baked into the unit
@@ -95,14 +95,14 @@ envelope  = {"data": data_b64, "nonce": nonce, "sig": sig}
 ```
 
 `json.dumps(..., separators=(",", ":"))` and `ensure_ascii=True`
-(Python default) are load-bearing — different whitespace or non-ASCII
+(Python default) are load-bearing, different whitespace or non-ASCII
 handling produces a different signature.
 
 ## Static-analysis review
 
 A review of this tool against the SonarCloud SAST finding classes (path
 traversal, command/argument injection, insecure temp use, unsafe DB opens)
-found nothing to remediate — the scheduler arguments are shell-quoted, secrets
+found nothing to remediate. The scheduler arguments are shell-quoted, secrets
 never reach the command line, and the secret-file writer refuses symlinks and
 uses mode 600. The full write-up is in
 [SECURITY-FINDINGS.md](SECURITY-FINDINGS.md); the posture is locked by

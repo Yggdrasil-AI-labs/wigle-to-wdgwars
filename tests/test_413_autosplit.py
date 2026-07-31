@@ -135,7 +135,7 @@ class UploadChunks413Tests(unittest.TestCase):
 
     def test_413_max_bytes_not_hard_coded_against_server_value(self) -> None:
         """If LOCOSP later raises the cap to 25 MB, the client must still
-        react to the same envelope shape — not a baked-in constant.
+        react to the same envelope shape, not a baked-in constant.
         We exercise this by sending a 413 envelope with max_bytes=25 MB and
         confirming the bisect path fires identically."""
         csv = _csv_with_rows(8)

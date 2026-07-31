@@ -5,7 +5,7 @@ live wdgwars.pl or api.wigle.net. Every test that would otherwise
 make a network call monkeypatches gungnir's whoami path and the
 WiGLE _wigle_get helper.
 
-The interactive_setup() walk-through itself isn't unit-tested here —
+The interactive_setup() walk-through itself isn't unit-tested here,
 it's driven by stdin prompts that are awkward to mock cleanly and is
 better covered by manual release verification. The pieces it composes
 (validators + key savers) are tested instead.
@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 import wigle_to_wdgwars as w  # noqa: E402
 
 
-def _network_blocker(*_a, **_kw):  # pragma: no cover — guard
+def _network_blocker(*_a, **_kw):  # pragma: no cover, guard
     raise AssertionError(
         "test made an un-mocked network call. Mock urlopen / _wigle_get / "
         "_client.whoami before exercising code that would hit wdgwars.pl "
@@ -92,7 +92,7 @@ class WriteSecretFileTests(_NetworkBlockedCase):
 
 class SaveKeyTests(_NetworkBlockedCase):
     """save_key + save_wigle_token route through _write_secret_file but
-    additionally print a confirmation. The print is intentional UX —
+    additionally print a confirmation. The print is intentional UX,
     just confirm the file lands where load_*() will look."""
 
     def setUp(self):

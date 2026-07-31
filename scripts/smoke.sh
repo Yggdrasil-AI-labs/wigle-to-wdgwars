@@ -6,14 +6,14 @@
 #      v2.0.8 footgun the Pi24 user hit).
 #   2. Throwaway venv + pinned-dep install (matches setup.sh flow).
 #   3. AST parse + import sanity.
-#   4. Unit tests (offline — every test mocks the network).
+#   4. Unit tests (offline - every test mocks the network).
 #   5. wigle_to_wdgwars.py --version + --help sanity.
 #   6. --schedule headless renders a unit file with --dry-run + marker,
 #      in an XDG-isolated home. systemctl is allowed to fail (no live
-#      user manager in CI) — we only assert on the artifact.
+#      user manager in CI) - we only assert on the artifact.
 #
 # Live `--schedule` install against the real systemd user manager is
-# NOT part of this script — that belongs in a pre-release manual
+# NOT part of this script - that belongs in a pre-release manual
 # checklist with a sacrificial key.
 #
 # Run from the repo root:   bash scripts/smoke.sh
@@ -90,7 +90,7 @@ ok "--version + --help"
 # Linux only. macOS gets cron; CI runs Linux so we focus there.
 if [ "$(uname -s)" = "Linux" ] && command -v systemctl >/dev/null 2>&1 \
         && [ -d /run/systemd/system ]; then
-    say "rendering systemd unit (no install) — XDG-isolated..."
+    say "rendering systemd unit (no install). XDG-isolated..."
     # Need a saved WiGLE key file present, but it never gets read in
     # --schedule mode (the value goes through the unit's ExecStart at
     # runtime, not at install time). Use a sacrificial placeholder.
@@ -98,7 +98,7 @@ if [ "$(uname -s)" = "Linux" ] && command -v systemctl >/dev/null 2>&1 \
     mkdir -p "$HOME/.config/wigle-to-wdgwars"
     echo "PLACEHOLDER" > "$HOME/.config/wigle-to-wdgwars/wigle.key"
     export XDG_CONFIG_HOME="$HOME/.config"
-    # Suppress systemctl errors — unit file is written BEFORE the call.
+    # Suppress systemctl errors. Unit file is written BEFORE the call.
     "$VENV_PY" wigle_to_wdgwars.py --schedule \
         --schedule-time 03:00 \
         --schedule-chunk-size 10000 \
@@ -128,7 +128,7 @@ if [ "$(uname -s)" = "Linux" ] && command -v systemctl >/dev/null 2>&1 \
         && fail "WiGLE token leaked into service ExecStart"
     ok "unit + timer content correct (dry-run + marker + flags + no key leak)"
 else
-    say "(skipping systemd unit smoke — not on a systemd Linux host)"
+    say "(skipping systemd unit smoke, not on a systemd Linux host)"
 fi
 
 say "all smoke checks passed"
