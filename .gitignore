@@ -17,3 +17,7 @@ hwm.json
 !example/*.csv
 *.json
 !example/*.json
+
+# Local host-specific venv wrappers (hardcode absolute local paths)
+run-venv.sh
+wdgwars-run
