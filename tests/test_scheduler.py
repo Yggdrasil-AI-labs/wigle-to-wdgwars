@@ -55,8 +55,32 @@ class SystemdRendererTests(unittest.TestCase):
     def test_service_includes_from_wigle_flags(self):
         units = w.render_systemd_units("03:00", True, 10000, PY, SCRIPT)
         self.assertIn("--from-wigle", units["service"])
-        self.assertIn("--wigle-latest 1", units["service"])
+        self.assertIn(f"--wigle-latest {w.SCHEDULE_WIGLE_LATEST}", units["service"])
         self.assertIn("--chunk-size 10000", units["service"])
+
+    def test_scheduled_window_is_wide_enough_to_drain_a_backlog(self):
+        """A scheduled window of 1 strands a backlog permanently.
+
+        Pulling an upload records it in the processed-transids state file. With
+        a window of 1, the newest upload gets marked processed and every later
+        run then sees only that same upload and reports "nothing new", so older
+        unprocessed uploads are never fetched. Guard the property rather than
+        the exact number.
+        """
+        self.assertGreater(w.SCHEDULE_WIGLE_LATEST, 1)
+        units = w.render_systemd_units("03:00", True, 10000, PY, SCRIPT)
+        self.assertNotIn("--wigle-latest 1\n", units["service"])
+        self.assertNotIn("--wigle-latest 1 ", units["service"])
+
+    def test_all_three_renderers_agree_on_the_window(self):
+        """systemd, cron and schtasks must bake in the same pull window."""
+        expected = f"--wigle-latest {w.SCHEDULE_WIGLE_LATEST}"
+        units = w.render_systemd_units("03:00", True, 10000, PY, SCRIPT)
+        self.assertIn(expected, units["service"])
+        self.assertIn(expected, w.render_cron_line("03:00", True, 10000, PY, SCRIPT))
+        # schtasks renders an argv list, so join before substring-checking.
+        schtasks = " ".join(w.render_schtasks_create("03:00", True, 10000, PY, SCRIPT))
+        self.assertIn(expected, schtasks)
 
     def test_service_omits_from_wigle_when_disabled(self):
         units = w.render_systemd_units("03:00", False, 10000, PY, SCRIPT)

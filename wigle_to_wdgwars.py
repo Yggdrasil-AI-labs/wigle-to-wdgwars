@@ -1410,6 +1410,21 @@ SYSTEMD_UNIT_NAME = "wigle-to-wdgwars"  # .service + .timer share this stem
 WINDOWS_TASK_NAME = "WigleToWDGWars"
 DEFAULT_SCHEDULE_TIME = "03:00"
 
+# How many recent WiGLE uploads a *scheduled* run considers. Interactive runs
+# still default to 1 via --wigle-latest.
+#
+# This must be greater than 1 or a backlog can never drain. Pulling an upload
+# records it in the processed-transids state file, so with a window of 1 the
+# newest upload gets marked processed and every later run then sees only that
+# same newest upload and reports "nothing new" while older unprocessed uploads
+# stay stranded forever. Already-processed uploads are skipped before anything
+# is downloaded, so a wider window costs nothing on an ordinary night.
+#
+# Kept deliberately modest: recovering from a long gap should not fire one huge
+# burst at the WDGWars upload caps. For a bigger catch-up, run by hand with
+# --from-wigle --wigle-latest N.
+SCHEDULE_WIGLE_LATEST = 5
+
 
 def _python_exe() -> str:
     """Absolute path to the Python that's running us.
@@ -1469,7 +1484,7 @@ def _schedule_argv(use_from_wigle: bool, chunk_size: int) -> list[str]:
     """
     cmd = [_python_exe(), str(_script_path())]
     if use_from_wigle:
-        cmd += ["--from-wigle", "--wigle-latest", "1"]
+        cmd += ["--from-wigle", "--wigle-latest", str(SCHEDULE_WIGLE_LATEST)]
     cmd += ["--chunk-size", str(chunk_size)]
     return cmd
 

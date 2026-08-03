@@ -4,6 +4,25 @@ All notable changes to wigle-to-wdgwars are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **A scheduled run now considers the 5 most recent WiGLE uploads instead of
+  only the newest one.** With a window of 1 a backlog could never drain.
+  Pulling an upload records it in the processed-transids state file, so the
+  newest upload got marked processed and every later run then saw only that
+  same upload and reported "nothing new", leaving older unprocessed uploads
+  stranded indefinitely. That bit hardest after a gap in phone uploads, which
+  is exactly when catching up matters. Already-processed uploads are skipped
+  before anything is downloaded, so the wider window costs nothing on an
+  ordinary night. It is kept deliberately modest so that recovering from a long
+  gap does not fire one huge burst at the WDGWars upload caps; for a larger
+  catch-up, run `--from-wigle --wigle-latest N` by hand. Interactive and
+  one-shot runs are unchanged and still default to 1. The value lives in a new
+  `SCHEDULE_WIGLE_LATEST` constant, and the renderer tests assert all three
+  scheduling mechanisms (systemd, cron, schtasks) bake in the same window.
+
 ## [1.6.2] - 2026-07-18 - Wrapper-refreshing --update + org migration
 
 ### Fixed
