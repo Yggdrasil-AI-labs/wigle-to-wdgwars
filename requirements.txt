@@ -8,4 +8,4 @@
 #
 # Uses GitHub's archive tarball URL (not `git+https://`) so end users
 # don't need git installed - pip fetches the .tar.gz over plain HTTPS.
-gungnir @ https://github.com/Yggdrasil-AI-labs/gungnir/archive/refs/tags/v0.1.3.tar.gz
+gungnir @ https://github.com/Yggdrasil-AI-labs/gungnir/archive/refs/tags/v0.1.4.tar.gz
