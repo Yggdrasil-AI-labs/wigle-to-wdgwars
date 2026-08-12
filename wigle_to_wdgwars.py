@@ -34,7 +34,7 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.6.3"
+__version__ = "1.6.4"
 GITHUB_REPO = "Yggdrasil-AI-labs/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
@@ -647,6 +647,15 @@ def _setup_wdgwars_key() -> int:
     print("   https://wdgwars.pl/account   →  Settings  →  API Key",
           file=sys.stderr)
     print("", file=sys.stderr)
+    print(" Generate a key just for this tool and name it, rather than", file=sys.stderr)
+    print(" reusing one you gave another tool. You can switch a single key", file=sys.stderr)
+    print(" off from the same profile page without touching the others.", file=sys.stderr)
+    print("", file=sys.stderr)
+    print(" By setting up a key you are authorising this tool to upload the", file=sys.stderr)
+    print(" data you give it to WDGWars under your own account. It will not", file=sys.stderr)
+    print(" ask again per upload. Use --dry-run or --preview to see exactly", file=sys.stderr)
+    print(" what would be sent first.", file=sys.stderr)
+    print("", file=sys.stderr)
 
     if DEFAULT_KEY_FILE.exists():
         print(f" A WDGWars key is already saved at {DEFAULT_KEY_FILE}.",
@@ -688,6 +697,10 @@ def _setup_wigle_token() -> int:
     print("", file=sys.stderr)
     print(" Get the 'Encoded for use' string from:", file=sys.stderr)
     print("   https://wigle.net/account", file=sys.stderr)
+    print("", file=sys.stderr)
+    print(f" This is a separate credential from your WDGWars key, stored", file=sys.stderr)
+    print(f" only at {WIGLE_KEY_FILE}. It is sent only to WiGLE, never to", file=sys.stderr)
+    print(" WDGWars or anywhere else.", file=sys.stderr)
     print("", file=sys.stderr)
 
     if WIGLE_KEY_FILE.exists():

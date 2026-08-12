@@ -108,6 +108,10 @@ What `setup.sh` does, in order:
    and logs but never POSTs. Re-run `./run.sh --schedule` and answer "no"
    to the dry-run prompt to flip it live.
 
+Generate a WDGWars key just for this tool and give it a name, rather than reusing one you handed another tool. Keys are switched off one at a time from the same profile page, so revoking this one later costs you nothing else. The WiGLE token is a separate credential, stored only at `~/.config/wigle-to-wdgwars/wigle.key`, and it is sent only to WiGLE, never to WDGWars.
+
+By configuring the WDGWars key you're authorising this tool to upload under your own account. It won't ask again per upload. Use `--preview` or `--dry-run` to see exactly what would be sent before you commit to it.
+
 After that, `./run.sh` (no args) does a one-off push, and the timer takes
 care of the rest. To remove the schedule later: `./run.sh --unschedule`.
 

@@ -23,6 +23,25 @@ project uses [Semantic Versioning](https://semver.org/).
   `SCHEDULE_WIGLE_LATEST` constant, and the renderer tests assert all three
   scheduling mechanisms (systemd, cron, schtasks) bake in the same window.
 
+## [1.6.4] - 2026-08-12 - State the upload authorisation and one-key-per-tool up front
+
+### Added
+
+- **The setup wizard and README now say what a configured WDGWars key
+  actually authorises, and cover the WiGLE token separately.**
+  `_setup_wdgwars_key()` and the README's guided-setup section now tell
+  people to generate a WDGWars key just for this tool rather than reusing
+  one they handed another tool, note that keys are revoked one at a time
+  from the profile page, and state that configuring a key authorises
+  uploads under the user's own account without asking again per upload,
+  pointing at `--preview` / `--dry-run` to see what would be sent first.
+  Because this tool is the only one in the family holding two credentials,
+  `_setup_wigle_token()` and the README also now say where the WiGLE
+  token is stored (`~/.config/wigle-to-wdgwars/wigle.key`) and that it is
+  sent only to WiGLE, never to WDGWars. Informational text only, added
+  next to the existing wizard prompts; it does not add a new question or
+  block on any input.
+
 ## [1.6.3] - 2026-08-12 - Version check is explicit-only
 
 ### Changed
