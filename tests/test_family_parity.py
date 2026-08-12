@@ -1,5 +1,6 @@
 """Tests for v1.3.0 family-parity flags: --preview, --update wiring,
---api-url override, --quiet/--no-version-check gating.
+--api-url override, and the explicit-only version check (--check-version,
+with --no-version-check retained as a compatibility no-op).
 
 Network calls are blocked at module load by tests/__init__.py; this
 module also mocks urllib explicitly where it would be invoked. No
@@ -71,8 +72,9 @@ class PreviewTests(unittest.TestCase):
 
 
 class VersionCheckCacheTests(unittest.TestCase):
-    """_check_for_update is called from main() under the
-    --quiet / --no-version-check gate. Verify the cache logic works
+    """_check_for_update is only ever reached from --check-version or
+    --update; nothing calls it on an ordinary run (see
+    NoUnattendedEgressTests below). Verify the cache logic works
     without hitting the network."""
 
     def test_returns_none_when_cache_says_same_version(self) -> None:
@@ -97,15 +99,89 @@ class VersionCheckCacheTests(unittest.TestCase):
             with mock.patch.object(w2w, "CONFIG_DIR", cache_dir):
                 self.assertEqual(w2w._check_for_update(), "99.99.99")
 
+    def test_force_bypasses_a_fresh_cache(self) -> None:
+        """force=True (what --check-version passes) must skip the 24h
+        cache entirely, even when the cache is fresh and says nothing
+        newer is out, so an operator who explicitly asked gets a live
+        answer rather than a stale one."""
+        with tempfile.TemporaryDirectory() as td:
+            cache_dir = Path(td)
+            cache = cache_dir / "version-check.json"
+            cache.write_text(json.dumps({
+                "checked_at": 9999999999.0,
+                "latest": w2w.__version__,
+            }))
+            fake_resp = mock.MagicMock()
+            fake_resp.read.return_value = json.dumps(
+                {"tag_name": "v99.99.99"}).encode()
+            fake_resp.__enter__.return_value = fake_resp
+            with mock.patch.object(w2w, "CONFIG_DIR", cache_dir), \
+                 mock.patch.object(w2w.urllib.request, "urlopen",
+                                   return_value=fake_resp):
+                self.assertEqual(
+                    w2w._check_for_update(force=True), "99.99.99")
+
     def test_network_error_returns_none(self) -> None:
         """If the cache is stale or missing, _check_for_update tries
         GitHub. A failed urlopen must NOT raise to the caller, the
-        main() gate just skips the nudge in that case."""
+        --check-version / --update caller just reports "current" in
+        that case."""
         with tempfile.TemporaryDirectory() as td:
             with mock.patch.object(w2w, "CONFIG_DIR", Path(td)), \
                  mock.patch.object(w2w.urllib.request, "urlopen",
                                    side_effect=OSError("boom")):
                 self.assertIsNone(w2w._check_for_update())
+
+
+class NoUnattendedEgressTests(unittest.TestCase):
+    """wigle-to-wdgwars must not talk to any third party unless the
+    operator asked.
+
+    The GitHub release check used to run on every invocation (opt-out
+    via --quiet / --no-version-check), which disclosed the user's IP,
+    their exact version, which tool they run, and a rough usage
+    cadence to GitHub without ever asking. It is now reachable only
+    through --check-version. These tests lock that in: a normal run
+    makes no check, the explicit flag still does, and the legacy
+    opt-out flag remains accepted so existing cron/systemd/schtasks
+    entries do not break.
+    """
+
+    def _capture(self, d: str) -> Path:
+        f = Path(d) / "sample.csv"
+        f.write_bytes(WIGLE_CSV)
+        return f
+
+    def test_normal_run_never_checks_for_updates(self) -> None:
+        # No -q, no --no-version-check: the old code path would fire here.
+        with tempfile.TemporaryDirectory() as td:
+            csv = self._capture(td)
+            argv = ["wigle_to_wdgwars.py", "--preview", str(csv)]
+            with mock.patch.object(sys, "argv", argv), \
+                 mock.patch.object(w2w, "_check_for_update") as chk:
+                rc = w2w.main()
+            self.assertEqual(rc, 0)
+            chk.assert_not_called()
+
+    def test_check_version_flag_still_checks(self) -> None:
+        argv = ["wigle_to_wdgwars.py", "--check-version"]
+        with mock.patch.object(sys, "argv", argv), \
+             mock.patch.object(w2w, "_check_for_update",
+                                return_value=None) as chk:
+            rc = w2w.main()
+        self.assertEqual(rc, 0)
+        chk.assert_called_once_with(force=True)
+
+    def test_legacy_no_version_check_flag_is_still_accepted(self) -> None:
+        # Baked into existing cron lines / systemd units / schtasks
+        # actions; erroring on it would break a working scheduled upload.
+        with tempfile.TemporaryDirectory() as td:
+            csv = self._capture(td)
+            argv = ["wigle_to_wdgwars.py", "--no-version-check",
+                    "--preview", str(csv)]
+            with mock.patch.object(sys, "argv", argv):
+                rc = w2w.main()
+            self.assertEqual(rc, 0)
 
 
 class ApiUrlOverrideTests(unittest.TestCase):

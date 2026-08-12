@@ -23,6 +23,29 @@ project uses [Semantic Versioning](https://semver.org/).
   `SCHEDULE_WIGLE_LATEST` constant, and the renderer tests assert all three
   scheduling mechanisms (systemd, cron, schtasks) bake in the same window.
 
+## [1.6.3] - 2026-08-12 - Version check is explicit-only
+
+### Changed
+
+- **The GitHub release check no longer runs on its own.** Previously
+  every invocation ran it unless you passed `--quiet` or
+  `--no-version-check`, which meant a normal run silently disclosed
+  your source IP, your exact installed version, which tool you run
+  (via the User-Agent), and a rough daily usage cadence to GitHub
+  without ever asking. The tool is now quiet by default: nothing
+  contacts GitHub unless you explicitly run `--check-version` or
+  `--update`.
+- **Added `--check-version`**: asks GitHub once whether a newer
+  release exists, prints the result, and exits. Bypasses the 24h
+  cache so an operator who explicitly asked gets a fresh answer
+  instead of a stale one.
+- `_check_for_update` gained a `force` parameter (used by
+  `--check-version`) to skip the cache on demand.
+- `--no-version-check` is still accepted on the command line, since it
+  is baked into existing cron lines, systemd units, and schtasks
+  actions, but it is now a no-op: there is no automatic check left to
+  disable. It is not documented as a feature going forward.
+
 ## [1.6.2] - 2026-07-18 - Wrapper-refreshing --update + org migration
 
 ### Fixed

@@ -34,7 +34,7 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.6.2"
+__version__ = "1.6.3"
 GITHUB_REPO = "Yggdrasil-AI-labs/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
@@ -112,13 +112,17 @@ PROCESSED_FILE = CONFIG_DIR / "processed-transids.json"
 # isn't. requirements.txt gets refreshed too so a future release that bumps
 # a pinned dep self-heals without a wrapper-script revision.
 
-def _check_for_update() -> str | None:
+def _check_for_update(force: bool = False) -> str | None:
     """Quick non-blocking version check against the GitHub releases API.
-    Cached for 24h in the user's config dir so we do not hammer the API.
+
+    Only ever reached from --check-version or --update: nothing calls this on
+    an ordinary run. Cached for 24h in the user's config dir so repeated
+    --update attempts do not hammer the API; `force` skips the cache so an
+    operator who explicitly asked gets a fresh answer rather than a stale one.
     Returns the latest tag if newer than __version__, else None."""
     cache = CONFIG_DIR / "version-check.json"
     try:
-        if cache.exists():
+        if cache.exists() and not force:
             blob = json.loads(cache.read_text())
             if time.time() - blob.get("checked_at", 0) < 86400:
                 latest = blob.get("latest")
@@ -1923,8 +1927,14 @@ def main() -> int:
                          "--preview for cross-tool consistency.")
     ap.add_argument("-q", "--quiet", action="store_true",
                     help="suppress informational banners (errors still print)")
+    ap.add_argument("--check-version", action="store_true",
+                    help="ask GitHub whether a newer release exists, then exit "
+                         "(the only thing here that contacts GitHub on its own)")
     ap.add_argument("--no-version-check", action="store_true",
-                    help="skip the daily GitHub release check entirely")
+                    help=argparse.SUPPRESS)  # accepted for compatibility; no
+    # automatic check happens any more, so this is a no-op. Existing cron
+    # lines, systemd units and schtasks actions carry it, and erroring on an
+    # unknown argument would break a working scheduled upload.
     ap.add_argument("--chunk-size", type=int, default=0,
                     help="proactively split CSV into N-row chunks (0=single POST). "
                          "10000 is a safe default for large uploads. The tool also "
@@ -1999,20 +2009,26 @@ def main() -> int:
     if args.update:
         return _run_update()
 
+    # Version check is explicit-only. It used to run on every invocation with
+    # --quiet / --no-version-check as the opt-out, which disclosed the user's
+    # IP, their exact version and a rough daily usage cadence to GitHub
+    # without ever asking. Nothing here talks to a third party unless the
+    # operator typed a command that says so.
+    if args.check_version:
+        newer = _check_for_update(force=True)
+        if newer:
+            print(f"[wigle-to-wdgwars] v{newer} is available "
+                  f"(you're on v{__version__}). Run `--update` to upgrade.",
+                  file=sys.stderr)
+        else:
+            print(f"[wigle-to-wdgwars] v{__version__} is current.", file=sys.stderr)
+        return 0
+
     # --api-url overrides the CSV upload endpoint (the primary path).
     # Aircraft JSON uploads still use the signed endpoint, override
     # there belongs in Muninn, not wigle.
     if args.api_url:
         ENDPOINT = args.api_url
-
-    # Soft nudge: if a newer release is out, mention it (non-blocking,
-    # daily-cached). Skip in CI-shaped invocations.
-    if not args.quiet and not args.no_version_check:
-        newer = _check_for_update()
-        if newer:
-            print(f"[wigle-to-wdgwars] note: v{newer} is available "
-                  f"(you're on v{__version__}). Run `--update` to upgrade.",
-                  file=sys.stderr)
 
     # --preview is a parser dry-run; needs the CSV path but no key.
     if args.preview:

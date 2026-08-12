@@ -378,6 +378,20 @@ If you skip the second line on a dep-bump release, you'll end up with
 new code importing the old gungnir bytes, which is a recipe for subtle
 parity bugs.
 
+wigle-to-wdgwars never phones home on its own. If you want to know
+whether a newer release exists, run `--check-version` and it asks
+GitHub once and tells you:
+
+```bash
+./run.sh --check-version
+```
+
+Nothing else on an ordinary run contacts anybody except the WDGWars
+(and, with `--from-wigle`, WiGLE) endpoints, and only when you invoke
+an upload. `--no-version-check` is still accepted on the command line
+for existing cron/systemd/schtasks entries, but it is a no-op now —
+there is no automatic check left for it to disable.
+
 ### Where the API keys are read from (in order)
 
 **WDGWars** (`--key` / `$WDGWARS_API_KEY` / `wdgwars.key`):

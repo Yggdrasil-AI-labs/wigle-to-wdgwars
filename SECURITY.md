@@ -16,6 +16,12 @@
 - With `--update`, fetches a fresh `wigle_to_wdgwars.py` (and
   `requirements.txt`) from `https://github.com/HiroAlleyCat/wigle-to-wdgwars`
   via `git pull` or raw GitHub.
+- With `--check-version`, asks the GitHub releases API whether a newer
+  tag exists and prints the answer, then exits. This discloses the
+  operator's source IP, their exact installed version, which tool
+  they run (via the User-Agent), and the time they ran it to GitHub.
+  Nothing here happens unless the operator types `--check-version` or
+  `--update` themselves.
 - With `--schedule`, writes a daily timer to one of
   `~/.config/systemd/user/`, the user's crontab, or Windows Task
   Scheduler.
@@ -24,11 +30,16 @@ That's the entire outbound footprint.
 
 ## What this tool does not do
 
-- No telemetry or analytics. The only outbound traffic is to
+- No telemetry or analytics, and no automatic or daily version check.
+  A run with no flags, or with any combination of flags other than
+  `--check-version` / `--update`, contacts nothing but the WDGWars and
+  WiGLE endpoints it was told to. The only outbound traffic is to
   `wdgwars.pl`, `api.wigle.net`, `api.github.com`, and
   `raw.githubusercontent.com`, each only on a flag the user invoked.
-  The GitHub calls happen on `--update` and on the daily version-check
-  nudge, both of which can be skipped with `--no-version-check`.
+  The GitHub calls happen on `--check-version` and `--update` only.
+  `--no-version-check` is accepted for compatibility with existing
+  scheduled invocations but does nothing: there is no automatic check
+  left to disable.
 - No `eval`, no `exec`, no `os.system`, no `shell=True`. There are no
   command-injection paths from CSV content or API responses into the
   shell.
