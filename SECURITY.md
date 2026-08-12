@@ -14,7 +14,7 @@
 - With `--whoami`, hits `https://wdgwars.pl/api/me` to validate the
   WDGWars key.
 - With `--update`, fetches a fresh `wigle_to_wdgwars.py` (and
-  `requirements.txt`) from `https://github.com/HiroAlleyCat/wigle-to-wdgwars`
+  `requirements.txt`) from `https://github.com/Yggdrasil-AI-labs/wigle-to-wdgwars`
   via `git pull` or raw GitHub.
 - With `--check-version`, asks the GitHub releases API whether a newer
   tag exists and prints the answer, then exits. This discloses the
