@@ -24,6 +24,18 @@ project uses [Semantic Versioning](https://semver.org/).
   wardrive that logged no networks) reads the same way and is simply skipped
   each run. Every other non-200 is still fatal. Reported as issue #8.
 
+- **A WiGLE upload that logged no networks is no longer POSTed to WDGWars.**
+  The second repro on the same report: a wardrive with zero SSIDs finishes
+  building, so it does not look like the 204 case, it comes back as a
+  header-only CSV. That was uploaded anyway, which imports nothing and holds
+  a slot in LOCOSP's per-account upload queue while a real upload waits
+  behind a 429. Both upload entry points now check for at least one data row
+  first and skip with a log line, the same way the `--since` gate already
+  skipped an upload when its filter left no rows. Because the skip is a
+  success, the transid is recorded as processed and is not re-downloaded
+  every night. A not-ready (204) upload is still deliberately left
+  unrecorded, so the two cases stay distinguishable.
+
 - **A scheduled run now considers the 5 most recent WiGLE uploads instead of
   only the newest one.** With a window of 1 a backlog could never drain.
   Pulling an upload records it in the processed-transids state file, so the

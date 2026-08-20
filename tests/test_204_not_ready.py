@@ -1,4 +1,4 @@
-"""Tests for WiGLE's "CSV not ready yet" answer (issue #8).
+"""Tests for WiGLE's "CSV not ready yet" answer, and for empty CSVs (issue #8).
 
 While an upload sits in WiGLE's processing queue the CSV endpoint answers
 HTTP 204 (or 200 with a zero-byte body). A busy queue can hold an upload
@@ -6,6 +6,11 @@ for days, so that is a "come back later", not a failure: the download
 returns None, the pull loop skips that transid, and the rest of the batch
 still goes to WDGWars. Before this, one queued upload sys.exit(1)'d the
 whole scheduled run.
+
+The same report's second repro is a wardrive that logged no networks. That
+one finishes building and comes back as a header-only CSV, which used to be
+POSTed: an upload carrying nothing, holding LOCOSP's per-account queue while
+a real upload waited behind a 429.
 """
 from __future__ import annotations
 
@@ -16,7 +21,7 @@ from unittest import mock
 
 import wigle_to_wdgwars as w2w
 
-from tests._helpers import csv_with_rows
+from tests._helpers import HEADER, csv_with_rows
 
 
 class DownloadNotReadyTests(unittest.TestCase):
@@ -33,7 +38,7 @@ class DownloadNotReadyTests(unittest.TestCase):
             self.assertIsNone(w2w.wigle_download_csv("tok", "T1"))
 
     def test_not_ready_is_not_retried_within_the_call(self):
-        """A queued CSV should cost one query, not two: no timeout retry."""
+        """A queued CSV should cost one WiGLE query, not two."""
         get = mock.Mock(return_value=(204, b""))
         with mock.patch.object(w2w, "_wigle_get", get):
             w2w.wigle_download_csv("tok", "T1")
@@ -50,6 +55,52 @@ class DownloadNotReadyTests(unittest.TestCase):
                 w2w.wigle_download_csv("tok", "T1")
 
 
+class EmptyCsvTests(unittest.TestCase):
+    """A finished-but-empty CSV must not cost a slot in LOCOSP's queue."""
+
+    def test_header_only_has_no_data_rows(self):
+        self.assertFalse(w2w._has_data_rows(HEADER))
+
+    def test_header_only_crlf_has_no_data_rows(self):
+        self.assertFalse(w2w._has_data_rows(HEADER.replace(b"\n", b"\r\n")))
+
+    def test_empty_bytes_has_no_data_rows(self):
+        self.assertFalse(w2w._has_data_rows(b""))
+
+    def test_trailing_blank_lines_do_not_count_as_rows(self):
+        self.assertFalse(w2w._has_data_rows(HEADER + b"\n\n   \n"))
+
+    def test_one_data_row_counts(self):
+        self.assertTrue(w2w._has_data_rows(csv_with_rows(1)))
+
+    def test_many_data_rows_count(self):
+        self.assertTrue(w2w._has_data_rows(csv_with_rows(500)))
+
+    def test_undecodable_bytes_do_not_raise(self):
+        """Only counting lines, so a bad byte must never take the run down."""
+        self.assertTrue(
+            w2w._has_data_rows(csv_with_rows(1) + b"\xff\xfe,junk\n"))
+
+    def test_header_only_upload_is_skipped_not_posted(self):
+        with mock.patch.object(w2w, "_upload_chunks") as chunks, \
+             mock.patch.object(w2w, "_cooldown_check_and_sleep") as cooldown:
+            rc = w2w.upload_csv_bytes(HEADER, "T1.csv", "key", "file",
+                                      dry_run=False, chunk_rows=10000,
+                                      cooldown_sec=0)
+        self.assertEqual(rc, 0)
+        chunks.assert_not_called()
+        cooldown.assert_not_called()
+
+    def test_csv_with_rows_still_uploads(self):
+        with mock.patch.object(w2w, "_upload_chunks", return_value=0) as chunks, \
+             mock.patch.object(w2w, "_cooldown_check_and_sleep"):
+            rc = w2w.upload_csv_bytes(csv_with_rows(2), "T1.csv", "key", "file",
+                                      dry_run=False, chunk_rows=10000,
+                                      cooldown_sec=0)
+        self.assertEqual(rc, 0)
+        chunks.assert_called_once()
+
+
 class PullLoopNotReadyTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -62,7 +113,7 @@ class PullLoopNotReadyTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_queued_upload_is_skipped_and_batch_still_succeeds(self):
-        """Issue #8: 5 pending uploads, the newest still queued at WiGLE."""
+        """Issue #8: several pending uploads, the newest still queued."""
         def fake_dl(_tok, tid):
             return None if tid == "T1" else b"x"
 

@@ -890,8 +890,12 @@ endpoint by default; only hits when something rewrites the URL.
 server-side and its queue can run days behind. Until it finishes, the CSV
 endpoint answers HTTP 204 with an empty body. The tool skips that upload,
 pushes whatever else in the batch is ready, and picks the skipped one up on
-the next run, so there is nothing to do. A wardrive that logged no networks
-reads the same way and gets skipped every run.
+the next run, so there is nothing to do.
+
+**`[wigle] <transid>.csv: no data rows, skipping upload`**: That WiGLE upload
+finished building but holds no networks (a wardrive that logged zero SSIDs).
+Nothing is sent, since an empty upload imports nothing and would hold your
+per-account upload slot. The transid is recorded as done and not pulled again.
 
 **`HTTP 401`**: Bad key, or you set `Authorization: Bearer …` somewhere.
 Run `--whoami` to confirm. Make sure your key is the full string from the

@@ -1135,6 +1135,23 @@ def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
     return 0 if agg.get("ok") else 1
 
 
+def _has_data_rows(csv_bytes: bytes) -> bool:
+    """True if a WiGLE CSV carries at least one data row after its 2-line header.
+
+    A wardrive that logged no networks comes back from WiGLE as a
+    header-only CSV: not empty (so not the 204 "still building" case), just
+    pointless. Posting it burns a slot in LOCOSP's per-account upload queue
+    and can leave a real upload waiting behind a 429 for nothing. The
+    --since gate already skips an upload when its filter leaves no rows;
+    this covers the same emptiness when no filter is in play.
+
+    Never raises: decodes with replacement, since this only counts lines.
+    """
+    lines = [ln for ln in csv_bytes.decode("utf-8", "replace").splitlines()
+             if ln.strip()]
+    return len(lines) >= 3
+
+
 def upload_csv_bytes(csv_bytes: bytes, name: str, key: str, field: str,
                      dry_run: bool, chunk_rows: int = 0, cooldown_sec: float = 5.0,
                      since_seconds: int = 0) -> int:
@@ -1142,6 +1159,9 @@ def upload_csv_bytes(csv_bytes: bytes, name: str, key: str, field: str,
 
     ``since_seconds > 0`` drops rows whose FirstSeen is older than the
     cutoff before chunking (see :func:`filter_csv_since`)."""
+    if not _has_data_rows(csv_bytes):
+        print(f"[wigle] {name}: no data rows, skipping upload", file=sys.stderr)
+        return 0
     filtered = _apply_since(csv_bytes, since_seconds, name)
     if filtered is None:
         return 0
@@ -1157,6 +1177,10 @@ def upload_csv(csv_path: Path, key: str, field: str, dry_run: bool,
     if not csv_path.is_file():
         sys.exit(f"csv not found: {csv_path}")
     raw = _read_csv_bytes(csv_path)
+    if not _has_data_rows(raw):
+        print(f"[wigle] {csv_path.name}: no data rows, skipping upload",
+              file=sys.stderr)
+        return 0
     filtered = _apply_since(raw, since_seconds, csv_path.name)
     if filtered is None:
         return 0
