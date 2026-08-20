@@ -16,7 +16,7 @@ from unittest import mock
 
 import wigle_to_wdgwars as w2w
 
-from ._helpers import csv_with_rows
+from tests._helpers import csv_with_rows
 
 
 class DownloadNotReadyTests(unittest.TestCase):
