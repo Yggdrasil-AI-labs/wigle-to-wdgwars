@@ -6,6 +6,15 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **gungnir pinned to v0.1.5.** Picks up two fixes to the shared transport:
+  an HTML error page (a portal maintenance window, a proxy, a WAF) is now
+  summarised to one line instead of dumping markup into the terminal, and a
+  5xx give-up no longer calls itself a rejection, which used to send people
+  looking at their own data for a fault that was never theirs. Also fixes
+  gungnir self-reporting 0.1.3 in its User-Agent while v0.1.4 was installed.
+
 ## [1.6.5] - 2026-08-20 - A queued WiGLE CSV no longer kills the daily run
 
 ### Fixed
