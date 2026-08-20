@@ -1287,6 +1287,28 @@ def whoami(key: str) -> int:
 
 # ───────────────────────────── WiGLE pull path ───────────────────────────────
 
+# WiGLE statuses that mean "the service cannot answer right now", as opposed
+# to "your request was wrong". A nightly timer hitting one of these has nothing
+# to fix and nothing to report: it should come back next run, not fail the unit.
+WIGLE_TRANSIENT_HTTP = (429, 502, 503, 504)
+
+# How many consecutive runs may be blocked by a transient condition before the
+# run starts failing for real. A quiet skip is right for a blip; a quiet skip
+# forever would hide a dead token or a dead network behind a green unit, so the
+# streak is counted (consecutive, since the last run that made progress) and
+# escalates. See feedback on consecutive-failure counts over window rates.
+TRANSIENT_RUN_LIMIT = 3
+
+
+class WigleUnavailable(Exception):
+    """WiGLE could not be reached or could not answer right now.
+
+    Raised for a network-level failure (URLError: DNS, refused, reset) or a
+    transient HTTP status (see WIGLE_TRANSIENT_HTTP). Distinct from a queued
+    CSV (HTTP 204), which means WiGLE is healthy and simply still building.
+    """
+
+
 def _wigle_get(url: str, token: str, timeout: float = 120) -> tuple[int, bytes]:
     """GET a WiGLE API URL with HTTP Basic auth. Returns (status, body_bytes)."""
     req = urllib.request.Request(
@@ -1314,10 +1336,18 @@ def wigle_list_transactions(token: str, limit: int) -> list[str]:
     page = 0
     while len(out) < limit:
         url = f"{WIGLE_TRANSACTIONS}?pagestart={page * 100}&pageend={(page + 1) * 100}"
-        status, body = _wigle_get(url, token)
+        try:
+            status, body = _wigle_get(url, token)
+        except urllib.error.URLError as e:
+            raise WigleUnavailable(
+                f"network error listing WiGLE uploads: {e}") from e
         if status == 401:
             sys.exit("[wigle] HTTP 401: bad token. Use the 'Encoded for use' "
                      "token from https://wigle.net/account")
+        if status in WIGLE_TRANSIENT_HTTP:
+            raise WigleUnavailable(
+                f"transactions list unavailable: HTTP {status}: "
+                f"{body[:200].decode('utf-8', 'replace')}")
         if status != 200:
             sys.exit(f"[wigle] transactions list failed: HTTP {status}: "
                      f"{body[:200].decode('utf-8', 'replace')}")
@@ -1358,6 +1388,9 @@ def wigle_download_csv(token: str, transid: str) -> bytes | None:
         try:
             status, body = _wigle_get(
                 WIGLE_CSV.format(transid=transid), token, timeout=timeout)
+            if status in WIGLE_TRANSIENT_HTTP:
+                raise WigleUnavailable(
+                    f"CSV download for {transid} unavailable: HTTP {status}")
             if status == 204 or (status == 200 and not body.strip()):
                 print(f"[wigle] {transid}: CSV not ready yet (HTTP {status}, "
                       f"{len(body)} bytes) - still queued at WiGLE, or the "
@@ -1367,6 +1400,17 @@ def wigle_download_csv(token: str, transid: str) -> bytes | None:
             if status != 200:
                 sys.exit(f"[wigle] CSV download failed for {transid}: HTTP {status}")
             return body
+        except urllib.error.URLError as e:
+            # A read timeout can surface either as a bare TimeoutError or
+            # wrapped in URLError, depending on where in the stack it fires.
+            # Keep the longer-ceiling retry for that case; anything else is
+            # the network being unreachable, which retrying now will not fix.
+            if not isinstance(e.reason, TimeoutError):
+                raise WigleUnavailable(
+                    f"network error downloading CSV for {transid}: {e}") from e
+            last_err = e
+            print(f"[wigle] CSV read timed out after {timeout}s for {transid} "
+                  f"(attempt {attempt}/2)", file=sys.stderr)
         except TimeoutError as e:
             last_err = e
             print(f"[wigle] CSV read timed out after {timeout}s for {transid} "
@@ -1399,6 +1443,61 @@ def _mark_transid_processed(transid: str) -> None:
               file=sys.stderr)
 
 
+def _load_transient_streak() -> int:
+    """How many consecutive runs have been blocked by a transient condition."""
+    try:
+        return int(json.loads(PROCESSED_FILE.read_text()).get("transient_runs", 0))
+    except Exception:
+        return 0
+
+
+def _write_transient_streak(n: int) -> None:
+    """Persist the transient-run streak alongside the processed transids.
+
+    Best-effort: a state file we cannot write must not fail a run that
+    otherwise worked.
+    """
+    try:
+        try:
+            data = json.loads(PROCESSED_FILE.read_text())
+        except Exception:
+            data = {}
+        data["processed"] = sorted(set(data.get("processed", [])))
+        if n:
+            data["transient_runs"] = n
+        else:
+            data.pop("transient_runs", None)
+        PROCESSED_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PROCESSED_FILE.write_text(json.dumps(data, indent=2))
+    except Exception as e:
+        print(f"[wigle] warning: could not record run state: {e}",
+              file=sys.stderr)
+
+
+def _blocked_run_exit_code(reason: str) -> int:
+    """Handle a run that reached WiGLE but could not get anything from it.
+
+    Returns the exit code the run should use. A blip stays quiet (0) so a
+    nightly timer does not raise an alarm nobody can act on; once
+    TRANSIENT_RUN_LIMIT consecutive runs have been blocked it starts failing
+    (1), because a permanently unreachable WiGLE behind a green unit is worse
+    than a noisy one.
+    """
+    streak = _load_transient_streak() + 1
+    _write_transient_streak(streak)
+    print(f"[wigle] {reason}", file=sys.stderr)
+    if streak >= TRANSIENT_RUN_LIMIT:
+        print(f"[wigle] {streak} consecutive runs have now been blocked "
+              f"(limit {TRANSIENT_RUN_LIMIT}). Treating this as a real "
+              f"failure: check that this host can reach api.wigle.net, and "
+              f"re-run --setup to re-validate your WiGLE token.",
+              file=sys.stderr)
+        return 1
+    print(f"[wigle] nothing pushed this run, will retry on the next one "
+          f"(blocked run {streak}/{TRANSIENT_RUN_LIMIT})", file=sys.stderr)
+    return 0
+
+
 def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
                                     latest: int, dry_run: bool, chunk_rows: int,
                                     cooldown_sec: float,
@@ -1412,7 +1511,10 @@ def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
     Uploads already recorded in PROCESSED_FILE are skipped (no re-download)
     unless ``reprocess`` is set. A transid is recorded only after a real
     (non-dry-run) successful push, so failed uploads and dry-runs are retried."""
-    transids = wigle_list_transactions(wigle_token, latest)
+    try:
+        transids = wigle_list_transactions(wigle_token, latest)
+    except WigleUnavailable as e:
+        return _blocked_run_exit_code(str(e))
     if not transids:
         print("[wigle] no uploads found on your account", file=sys.stderr)
         return 0
@@ -1432,8 +1534,25 @@ def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
           f"{', '.join(pending)}", file=sys.stderr)
     rc = 0
     not_ready = []
+    pushed_any = False
     for tid in pending:
-        csv_bytes = wigle_download_csv(wigle_token, tid)
+        try:
+            csv_bytes = wigle_download_csv(wigle_token, tid)
+        except WigleUnavailable as e:
+            # WiGLE went away mid-batch. The remaining transids would hit the
+            # same wall, so stop here rather than walking the whole list.
+            remaining = [t for t in pending[pending.index(tid):]
+                         if t not in not_ready]
+            print(f"[wigle] stopping this run, {len(remaining)} upload(s) "
+                  f"left untried: {', '.join(remaining)}", file=sys.stderr)
+            if pushed_any:
+                # Progress was made, so this is not a blocked run: keep the
+                # streak clear and stay quiet. The untried transids are
+                # unrecorded and come back on the next run.
+                _write_transient_streak(0)
+                print(f"[wigle] {e}", file=sys.stderr)
+                return rc
+            return _blocked_run_exit_code(str(e))
         if csv_bytes is None:
             not_ready.append(tid)
             continue
@@ -1443,8 +1562,12 @@ def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
                              dry_run, chunk_rows, cooldown_sec,
                              since_seconds=since_seconds)
         rc = rc or r
-        if r == 0 and not dry_run:
-            _mark_transid_processed(tid)
+        if r == 0:
+            pushed_any = True
+            if not dry_run:
+                _mark_transid_processed(tid)
+    if pushed_any:
+        _write_transient_streak(0)
     if not_ready:
         print(f"[wigle] {len(not_ready)} upload(s) not ready at WiGLE, left for "
               f"a later run: {', '.join(not_ready)}", file=sys.stderr)

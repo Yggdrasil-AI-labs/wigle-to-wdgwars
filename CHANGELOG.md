@@ -24,6 +24,27 @@ project uses [Semantic Versioning](https://semver.org/).
   wardrive that logged no networks) reads the same way and is simply skipped
   each run. Every other non-200 is still fatal. Reported as issue #8.
 
+- **A network blip or a busy WiGLE no longer crashes or false-alarms the
+  nightly run.** Found while reviewing the fix above: a `URLError` (DNS
+  failure, connection refused, connection reset) was uncaught on both the
+  transactions list and the CSV download, so a router reboot at 03:00 put a
+  raw Python traceback in the journal and failed the unit. A WiGLE 429, 502,
+  503 or 504 exited 1 the same way, reporting FAILURE for an upstream
+  condition nobody can act on. Those are now classified as `WigleUnavailable`
+  and the run stays quiet.
+
+  Quiet, but not silent forever: the number of consecutive runs blocked this
+  way is persisted next to the processed transids and escalates to a real
+  failure at `TRANSIENT_RUN_LIMIT` (3), so a dead network or a revoked token
+  cannot hide behind a green unit. Any run that pushes something clears the
+  count. A queued CSV (204) is deliberately not counted, because WiGLE is
+  healthy in that case and simply still building, and a multi-day queue is
+  normal. A 401, a 404 and an unexpected 500 all stay fatal, and a partial
+  batch keeps the uploads that landed while leaving the rest for the next
+  run. The read-timeout retry now also covers the case where the timeout
+  arrives wrapped in a `URLError` rather than bare, which previously escaped
+  the retry entirely.
+
 - **A WiGLE upload that logged no networks is no longer POSTed to WDGWars.**
   The second repro on the same report: a wardrive with zero SSIDs finishes
   building, so it does not look like the 204 case, it comes back as a
