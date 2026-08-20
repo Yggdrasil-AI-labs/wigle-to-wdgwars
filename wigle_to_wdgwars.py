@@ -34,7 +34,7 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.6.4"
+__version__ = "1.6.5"
 GITHUB_REPO = "Yggdrasil-AI-labs/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
@@ -1315,19 +1315,31 @@ def wigle_list_transactions(token: str, limit: int) -> list[str]:
     return out
 
 
-def wigle_download_csv(token: str, transid: str) -> bytes:
-    """Download one WiGLE upload as CSV bytes.
+def wigle_download_csv(token: str, transid: str) -> bytes | None:
+    """Download one WiGLE upload as CSV bytes, or None if it is not ready yet.
 
     WiGLE builds the CSV server-side, so a large upload can take minutes to
     stream. A single read timeout is transient, not terminal: retry once with a
     longer ceiling before giving up. (Was a flat 300s, which timed out on big
     exports and killed the whole daily run.)
+
+    While an upload is still in WiGLE's processing queue the CSV endpoint
+    answers HTTP 204 (or 200 with a zero-byte body). That is a "come back
+    later", not a failure: a busy queue can hold an upload for days. Return
+    None so the caller can skip it and try again on the next run instead of
+    killing the whole daily push. (Reported as issue #8.)
     """
     last_err = None
     for attempt, timeout in enumerate((600, 900), start=1):
         try:
             status, body = _wigle_get(
                 WIGLE_CSV.format(transid=transid), token, timeout=timeout)
+            if status == 204 or (status == 200 and not body.strip()):
+                print(f"[wigle] {transid}: CSV not ready yet (HTTP {status}, "
+                      f"{len(body)} bytes) - still queued at WiGLE, or the "
+                      f"upload held no networks. Skipping; will retry next run.",
+                      file=sys.stderr)
+                return None
             if status != 200:
                 sys.exit(f"[wigle] CSV download failed for {transid}: HTTP {status}")
             return body
@@ -1395,8 +1407,12 @@ def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
     print(f"[wigle] pulling {len(pending)} upload(s): "
           f"{', '.join(pending)}", file=sys.stderr)
     rc = 0
+    not_ready = []
     for tid in pending:
         csv_bytes = wigle_download_csv(wigle_token, tid)
+        if csv_bytes is None:
+            not_ready.append(tid)
+            continue
         print(f"[wigle] {tid}: {len(csv_bytes) / 1024:.1f} KB -> WDGWars",
               file=sys.stderr)
         r = upload_csv_bytes(csv_bytes, f"{tid}.csv", wdg_key, field,
@@ -1405,6 +1421,9 @@ def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
         rc = rc or r
         if r == 0 and not dry_run:
             _mark_transid_processed(tid)
+    if not_ready:
+        print(f"[wigle] {len(not_ready)} upload(s) not ready at WiGLE, left for "
+              f"a later run: {', '.join(not_ready)}", file=sys.stderr)
     return rc
 
 

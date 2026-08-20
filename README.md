@@ -886,6 +886,13 @@ have records in this shape (e.g. exported from your own pipeline).
 a CSV. The CSV endpoint is `/api/upload-csv`. This tool uses the right
 endpoint by default; only hits when something rewrites the URL.
 
+**`[wigle] <transid>: CSV not ready yet`**: WiGLE builds each export CSV
+server-side and its queue can run days behind. Until it finishes, the CSV
+endpoint answers HTTP 204 with an empty body. The tool skips that upload,
+pushes whatever else in the batch is ready, and picks the skipped one up on
+the next run, so there is nothing to do. A wardrive that logged no networks
+reads the same way and gets skipped every run.
+
 **`HTTP 401`**: Bad key, or you set `Authorization: Bearer …` somewhere.
 Run `--whoami` to confirm. Make sure your key is the full string from the
 WDGWars account page, no extra whitespace.

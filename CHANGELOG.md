@@ -6,7 +6,23 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.5] - 2026-08-20 - A queued WiGLE CSV no longer kills the daily run
+
 ### Fixed
+
+- **An upload still sitting in WiGLE's processing queue is skipped instead of
+  failing the whole scheduled push.** WiGLE builds each CSV server-side and its
+  queue can hold an upload for days; while it does, the CSV endpoint answers
+  HTTP 204 (or 200 with a zero-byte body). `wigle_download_csv()` treated any
+  non-200 as terminal and `sys.exit(1)`'d, so one queued upload took down the
+  entire nightly run and systemd logged a FAILURE, even though the other four
+  uploads in the batch were ready to push. A not-ready answer now returns None,
+  the pull loop skips that transid and carries on with the rest, and the run
+  exits 0 with a summary line naming what was left for later. The skipped
+  transid is deliberately not recorded as processed, so it comes back on the
+  next run once WiGLE finishes building it. A genuinely empty upload (a
+  wardrive that logged no networks) reads the same way and is simply skipped
+  each run. Every other non-200 is still fatal. Reported as issue #8.
 
 - **A scheduled run now considers the 5 most recent WiGLE uploads instead of
   only the newest one.** With a window of 1 a backlog could never drain.
