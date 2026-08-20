@@ -274,6 +274,75 @@ class BlockedRunStreakTests(_Base):
             self.assertEqual(w2w._load_transient_streak(), 0)
 
 
+class UploadEndpointUnavailableTests(_Base):
+    """The WDGWars half of the same gap.
+
+    _upload_chunks used to sys.exit on a URLError, so a network drop during
+    the POST failed the unit even though the transid was left unrecorded and
+    would have retried on its own. It now raises, and the caller decides:
+    the scheduled pull defers, the one-shot CLI path still fails loudly.
+    """
+
+    def _opener_upload_drops(self, after: int = 0):
+        """urlopen stub whose WDGWars POST dies after `after` successes."""
+        ok = {"count": 0}
+
+        def fake(req, *a, **kw):
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            if "transactions" in url:
+                return _Resp(json.dumps(
+                    {"success": True,
+                     "results": [{"transid": t} for t in TIDS]}).encode())
+            if "upload" in url:
+                if ok["count"] >= after:
+                    raise urllib.error.URLError("connection reset by peer")
+                ok["count"] += 1
+                self.posted.append(url)
+                return _Resp(json.dumps(
+                    {"ok": True, "imported": 1, "captured": 1, "updated": 0,
+                     "duplicates": 0, "no_gps": 0, "bad_rows": 0,
+                     "total": 1}).encode())
+            tid = next((t for t in TIDS if t in url), "?")
+            return _ready(tid, url)
+        return fake
+
+    def test_scheduled_pull_defers_instead_of_failing(self):
+        rc, out = self._run_once(self._opener_upload_drops(after=0))
+        self.assertEqual(rc, 0)
+        self.assertNotIn("Traceback", out)
+        self.assertIn("left unsent", out)
+        self.assertEqual(self._state_now().get("transient_runs"), 1)
+        self.assertEqual(self._state_now().get("processed", []), [])
+
+    def test_drop_after_a_successful_upload_keeps_it_and_stays_quiet(self):
+        rc, out = self._run_once(self._opener_upload_drops(after=1))
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(self.posted), 1)
+        recorded = self._state_now().get("processed", [])
+        self.assertEqual(recorded, [TIDS[0]])
+        self.assertNotIn("transient_runs", self._state_now())
+
+    def test_repeated_endpoint_outage_still_escalates(self):
+        codes = [self._run_once(self._opener_upload_drops(after=0))[0]
+                 for _ in range(w2w.TRANSIENT_RUN_LIMIT)]
+        self.assertEqual(codes[-1], 1, "a lasting outage must surface")
+
+    def test_one_shot_file_upload_still_fails_loudly(self):
+        """Someone is watching an interactive run: do not quietly defer."""
+        csv = Path(self._tmp.name) / "w.csv"
+        csv.write_bytes(csv_with_rows(2))
+
+        def dies(req, *a, **kw):
+            raise urllib.error.URLError("connection refused")
+
+        buf = io.StringIO()
+        with mock.patch.object(urllib.request, "urlopen", dies),              mock.patch.object(w2w.sys, "stderr", buf),              mock.patch.object(w2w, "_cooldown_check_and_sleep"):
+            rc = w2w._upload_csv_file(csv, "K", "file", dry_run=False,
+                                      chunk_rows=10000, cooldown_sec=0)
+        self.assertEqual(rc, 1)
+        self.assertIn("network error", buf.getvalue())
+
+
 class HealthyRunTests(_Base):
     def test_control_all_three_uploads_pushed_and_recorded(self):
         rc, _ = self._run_once(self._opener())

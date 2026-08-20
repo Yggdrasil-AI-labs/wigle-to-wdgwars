@@ -898,7 +898,8 @@ Nothing is sent, since an empty upload imports nothing and would hold your
 per-account upload slot. The transid is recorded as done and not pulled again.
 
 **`[wigle] nothing pushed this run, will retry on the next one`**: The tool
-could not reach WiGLE (network error) or WiGLE answered 429/502/503/504. The
+could not reach WiGLE or WDGWars (network error), or WiGLE answered
+429/502/503/504. The
 run exits 0 on purpose so a nightly timer does not raise an alarm for an
 upstream condition, and it retries on the next run. After 3 consecutive
 blocked runs it starts exiting 1 instead, so a genuinely dead network or a

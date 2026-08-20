@@ -24,6 +24,18 @@ project uses [Semantic Versioning](https://semver.org/).
   wardrive that logged no networks) reads the same way and is simply skipped
   each run. Every other non-200 is still fatal. Reported as issue #8.
 
+- **A network drop during the WDGWars upload defers instead of failing the
+  unit.** The mirror image of the WiGLE-side fix below, on the sending half:
+  `_upload_chunks` exited on a `URLError`, so a blip mid-POST reported FAILURE
+  even though the transid was left unrecorded and would have retried on its
+  own. It now raises `WdgwarsUnavailable` and the caller decides what that
+  means, which is the part that matters: a scheduled `--from-wigle` pull
+  treats it as a blocked run (quiet, counted, escalating like any other), and
+  a one-shot `wigle-to-wdgwars FILE.csv` still fails loudly with exit 1,
+  because someone is watching that run. HTTP errors from the server are
+  untouched: those carry a response and are still handled inline (429
+  cooldown, 413 bisect, 409 duplicate).
+
 - **A network blip or a busy WiGLE no longer crashes or false-alarms the
   nightly run.** Found while reviewing the fix above: a `URLError` (DNS
   failure, connection refused, connection reset) was uncaught on both the

@@ -1055,7 +1055,8 @@ def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
         try:
             status, raw, dur = _post_one(body, name, key, field)
         except urllib.error.URLError as e:
-            sys.exit(f"[wdgwars] network error on attempt {attempt}: {e}")
+            raise WdgwarsUnavailable(
+                f"network error on attempt {attempt}: {e}") from e
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
@@ -1168,6 +1169,21 @@ def upload_csv_bytes(csv_bytes: bytes, name: str, key: str, field: str,
     _cooldown_check_and_sleep()
     chunks = _split_bytes(filtered, chunk_rows) if chunk_rows else [filtered]
     return _upload_chunks(chunks, name, key, field, dry_run, cooldown_sec)
+
+
+def _upload_csv_file(csv_path: Path, key: str, field: str, dry_run: bool,
+                     chunk_rows: int = 0, cooldown_sec: float = 5.0,
+                     since_seconds: int = 0) -> int:
+    """upload_csv for the one-shot CLI path: an unreachable endpoint is a
+    plain failure here. Someone is watching this run, so say so and exit 1
+    rather than quietly deferring the way the scheduled pull does.
+    """
+    try:
+        return upload_csv(csv_path, key, field, dry_run, chunk_rows,
+                          cooldown_sec, since_seconds)
+    except WdgwarsUnavailable as e:
+        print(f"[wdgwars] {e}", file=sys.stderr)
+        return 1
 
 
 def upload_csv(csv_path: Path, key: str, field: str, dry_run: bool,
@@ -1298,6 +1314,17 @@ WIGLE_TRANSIENT_HTTP = (429, 502, 503, 504)
 # streak is counted (consecutive, since the last run that made progress) and
 # escalates. See feedback on consecutive-failure counts over window rates.
 TRANSIENT_RUN_LIMIT = 3
+
+
+class WdgwarsUnavailable(Exception):
+    """The WDGWars endpoint could not be reached at all (URLError).
+
+    Raised instead of exiting, so the caller decides what it means: a
+    scheduled pull treats it as a blocked run and retries next time, while
+    an interactive file upload still fails loudly. An HTTP error from the
+    server is NOT this: those carry a response and are handled inline
+    (429 cooldown, 413 bisect, 409 duplicate).
+    """
 
 
 class WigleUnavailable(Exception):
@@ -1557,9 +1584,22 @@ def pull_from_wigle_push_to_wdgwars(wigle_token: str, wdg_key: str, field: str,
             continue
         print(f"[wigle] {tid}: {len(csv_bytes) / 1024:.1f} KB -> WDGWars",
               file=sys.stderr)
-        r = upload_csv_bytes(csv_bytes, f"{tid}.csv", wdg_key, field,
-                             dry_run, chunk_rows, cooldown_sec,
-                             since_seconds=since_seconds)
+        try:
+            r = upload_csv_bytes(csv_bytes, f"{tid}.csv", wdg_key, field,
+                                 dry_run, chunk_rows, cooldown_sec,
+                                 since_seconds=since_seconds)
+        except WdgwarsUnavailable as e:
+            # The endpoint went away. This transid is unrecorded, so it and
+            # everything after it come back on the next run.
+            remaining = [t for t in pending[pending.index(tid):]
+                         if t not in not_ready]
+            print(f"[wdgwars] {e}", file=sys.stderr)
+            print(f"[wigle] stopping this run, {len(remaining)} upload(s) "
+                  f"left unsent: {', '.join(remaining)}", file=sys.stderr)
+            if pushed_any:
+                _write_transient_streak(0)
+                return rc
+            return _blocked_run_exit_code(str(e))
         rc = rc or r
         if r == 0:
             pushed_any = True
@@ -2266,7 +2306,7 @@ def main() -> int:
     if not args.csv:
         ap.error("provide a CSV path, --from-wigle, --aircraft-json FILE, or --whoami")
 
-    return upload_csv(Path(args.csv), key, args.field, args.dry_run,
+    return _upload_csv_file(Path(args.csv), key, args.field, args.dry_run,
                       chunk_rows=args.chunk_size, cooldown_sec=args.chunk_cooldown,
                       since_seconds=since_seconds)
 
