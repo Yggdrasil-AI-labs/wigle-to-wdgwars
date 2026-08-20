@@ -76,7 +76,7 @@ class _Base(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def opener(self, csv_answer=_ready, list_answer=None):
+    def _opener(self, csv_answer=_ready, list_answer=None):
         def fake(req, *a, **kw):
             url = req.full_url if hasattr(req, "full_url") else str(req)
             if "transactions" in url:
@@ -95,7 +95,7 @@ class _Base(unittest.TestCase):
             return csv_answer(tid, url)
         return fake
 
-    def run_once(self, fake_urlopen, extra_argv=()):
+    def _run_once(self, fake_urlopen, extra_argv=()):
         """One main() invocation against this test's persistent state file."""
         argv = ["w.py", "--from-wigle", "--wigle-latest", str(len(TIDS)),
                 "--key", "K", "--wigle-key", "T", "--chunk-cooldown", "0",
@@ -112,7 +112,7 @@ class _Base(unittest.TestCase):
                 rc = e.code if isinstance(e.code, int) else 1
         return rc, buf.getvalue()
 
-    def state_now(self) -> dict:
+    def _state_now(self) -> dict:
         return json.loads(self.state.read_text()) if self.state.exists() else {}
 
 
@@ -123,21 +123,21 @@ class NetworkErrorTests(_Base):
         def boom(url):
             raise urllib.error.URLError("[Errno 111] Connection refused")
 
-        rc, out = self.run_once(self.opener(list_answer=boom))
+        rc, out = self._run_once(self._opener(list_answer=boom))
         self.assertEqual(rc, 0)
         self.assertNotIn("Traceback", out)
         self.assertIn("network error listing WiGLE uploads", out)
-        self.assertEqual(self.state_now().get("transient_runs"), 1)
+        self.assertEqual(self._state_now().get("transient_runs"), 1)
 
     def test_network_down_at_csv_download_stays_quiet(self):
         def drop(tid, url):
             raise urllib.error.URLError("[Errno -3] name resolution failure")
 
-        rc, out = self.run_once(self.opener(csv_answer=drop))
+        rc, out = self._run_once(self._opener(csv_answer=drop))
         self.assertEqual(rc, 0)
         self.assertNotIn("Traceback", out)
         self.assertEqual(self.posted, [])
-        self.assertEqual(self.state_now().get("transient_runs"), 1)
+        self.assertEqual(self._state_now().get("transient_runs"), 1)
 
     def test_read_timeout_wrapped_in_urlerror_still_retries(self):
         """The 600s/900s retry must survive the new URLError branch.
@@ -152,7 +152,7 @@ class NetworkErrorTests(_Base):
             calls.append(url)
             raise urllib.error.URLError(TimeoutError("timed out"))
 
-        rc, out = self.run_once(self.opener(csv_answer=slow))
+        rc, out = self._run_once(self._opener(csv_answer=slow))
         self.assertGreaterEqual(len(calls), 2, "expected the longer retry")
         self.assertIn("timed out after", out)
         self.assertEqual(rc, 1)
@@ -167,30 +167,30 @@ class TransientStatusTests(_Base):
                 def unavailable(url, code=code):
                     raise _http_error(url, code)
 
-                rc, _ = self.run_once(self.opener(list_answer=unavailable))
+                rc, _ = self._run_once(self._opener(list_answer=unavailable))
                 self.assertEqual(rc, 0, f"HTTP {code} should not fail the run")
-                self.assertEqual(self.state_now().get("transient_runs"), 1)
+                self.assertEqual(self._state_now().get("transient_runs"), 1)
 
     def test_unexpected_500_is_still_fatal(self):
         def five_hundred(url):
             raise _http_error(url, 500, b"boom")
 
-        rc, _ = self.run_once(self.opener(list_answer=five_hundred))
+        rc, _ = self._run_once(self._opener(list_answer=five_hundred))
         self.assertEqual(rc, 1)
 
     def test_bad_token_is_still_fatal_and_not_counted_transient(self):
         def unauthorized(url):
             raise _http_error(url, 401, b"nope")
 
-        rc, _ = self.run_once(self.opener(list_answer=unauthorized))
+        rc, _ = self._run_once(self._opener(list_answer=unauthorized))
         self.assertEqual(rc, 1)
-        self.assertNotIn("transient_runs", self.state_now())
+        self.assertNotIn("transient_runs", self._state_now())
 
     def test_csv_404_is_still_fatal(self):
         def gone(tid, url):
             raise _http_error(url, 404, b"gone")
 
-        rc, _ = self.run_once(self.opener(csv_answer=gone))
+        rc, _ = self._run_once(self._opener(csv_answer=gone))
         self.assertEqual(rc, 1)
 
 
@@ -202,41 +202,41 @@ class BlockedRunStreakTests(_Base):
         raise urllib.error.URLError("network unreachable")
 
     def test_streak_escalates_at_the_limit(self):
-        codes = [self.run_once(self.opener(list_answer=self._boom))[0]
+        codes = [self._run_once(self._opener(list_answer=self._boom))[0]
                  for _ in range(w2w.TRANSIENT_RUN_LIMIT + 1)]
         expected = ([0] * (w2w.TRANSIENT_RUN_LIMIT - 1)
                     + [1, 1])
         self.assertEqual(codes, expected)
-        self.assertEqual(self.state_now().get("transient_runs"),
+        self.assertEqual(self._state_now().get("transient_runs"),
                          w2w.TRANSIENT_RUN_LIMIT + 1)
 
     def test_escalation_message_names_the_streak(self):
         for _ in range(w2w.TRANSIENT_RUN_LIMIT - 1):
-            self.run_once(self.opener(list_answer=self._boom))
-        _, out = self.run_once(self.opener(list_answer=self._boom))
+            self._run_once(self._opener(list_answer=self._boom))
+        _, out = self._run_once(self._opener(list_answer=self._boom))
         self.assertIn("consecutive runs have now been blocked", out)
 
     def test_a_run_that_pushes_clears_the_streak(self):
-        self.run_once(self.opener(list_answer=self._boom))
-        self.assertEqual(self.state_now().get("transient_runs"), 1)
-        rc, _ = self.run_once(self.opener())
+        self._run_once(self._opener(list_answer=self._boom))
+        self.assertEqual(self._state_now().get("transient_runs"), 1)
+        rc, _ = self._run_once(self._opener())
         self.assertEqual(rc, 0)
-        self.assertNotIn("transient_runs", self.state_now())
+        self.assertNotIn("transient_runs", self._state_now())
         self.assertEqual(len(self.posted), len(TIDS))
 
     def test_streak_restarts_from_one_after_a_good_run(self):
-        self.run_once(self.opener(list_answer=self._boom))
-        self.run_once(self.opener())
-        rc, _ = self.run_once(self.opener(list_answer=self._boom))
+        self._run_once(self._opener(list_answer=self._boom))
+        self._run_once(self._opener())
+        rc, _ = self._run_once(self._opener(list_answer=self._boom))
         self.assertEqual(rc, 0)
-        self.assertEqual(self.state_now().get("transient_runs"), 1)
+        self.assertEqual(self._state_now().get("transient_runs"), 1)
 
     def test_a_queued_csv_is_not_a_blocked_run(self):
         """WiGLE is healthy, just slow. A week of 204s must not alarm."""
         for _ in range(w2w.TRANSIENT_RUN_LIMIT + 2):
-            rc, _ = self.run_once(self.opener(csv_answer=_queued))
+            rc, _ = self._run_once(self._opener(csv_answer=_queued))
             self.assertEqual(rc, 0)
-        self.assertNotIn("transient_runs", self.state_now())
+        self.assertNotIn("transient_runs", self._state_now())
         self.assertEqual(self.posted, [])
 
     def test_drop_after_partial_progress_stays_quiet_and_keeps_the_pushes(self):
@@ -245,14 +245,14 @@ class BlockedRunStreakTests(_Base):
                 raise urllib.error.URLError("connection reset")
             return _ready(tid, url)
 
-        rc, out = self.run_once(self.opener(csv_answer=half))
+        rc, out = self._run_once(self._opener(csv_answer=half))
         self.assertEqual(rc, 0)
         self.assertEqual(len(self.posted), 2)
-        recorded = self.state_now().get("processed", [])
+        recorded = self._state_now().get("processed", [])
         self.assertIn(TIDS[0], recorded)
         self.assertIn(TIDS[1], recorded)
         self.assertNotIn(TIDS[2], recorded)
-        self.assertNotIn("transient_runs", self.state_now())
+        self.assertNotIn("transient_runs", self._state_now())
         self.assertIn("left untried", out)
 
     def test_streak_state_does_not_disturb_the_processed_list(self):
@@ -276,19 +276,19 @@ class BlockedRunStreakTests(_Base):
 
 class HealthyRunTests(_Base):
     def test_control_all_three_uploads_pushed_and_recorded(self):
-        rc, _ = self.run_once(self.opener())
+        rc, _ = self._run_once(self._opener())
         self.assertEqual(rc, 0)
         self.assertEqual(len(self.posted), len(TIDS))
-        self.assertEqual(sorted(self.state_now()["processed"]), sorted(TIDS))
+        self.assertEqual(sorted(self._state_now()["processed"]), sorted(TIDS))
 
     def test_header_only_upload_is_recorded_but_never_posted(self):
         def one_empty(tid, url):
             return _Resp(HEADER) if tid == TIDS[0] else _ready(tid, url)
 
-        rc, _ = self.run_once(self.opener(csv_answer=one_empty))
+        rc, _ = self._run_once(self._opener(csv_answer=one_empty))
         self.assertEqual(rc, 0)
         self.assertEqual(len(self.posted), 2)
-        self.assertIn(TIDS[0], self.state_now()["processed"])
+        self.assertIn(TIDS[0], self._state_now()["processed"])
 
 
 if __name__ == "__main__":

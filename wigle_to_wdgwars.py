@@ -1454,19 +1454,18 @@ def _load_transient_streak() -> int:
 def _write_transient_streak(n: int) -> None:
     """Persist the transient-run streak alongside the processed transids.
 
+    The file is rebuilt from validated values rather than by editing what
+    was read back: a corrupt or hand-edited state file cannot round-trip
+    unknown keys through us, and the transid list goes through the same
+    loader (and the same set/sorted pass) the rest of the module uses.
+
     Best-effort: a state file we cannot write must not fail a run that
     otherwise worked.
     """
     try:
-        try:
-            data = json.loads(PROCESSED_FILE.read_text())
-        except Exception:
-            data = {}
-        data["processed"] = sorted(set(data.get("processed", [])))
+        data: dict = {"processed": sorted(_load_processed_transids())}
         if n:
-            data["transient_runs"] = n
-        else:
-            data.pop("transient_runs", None)
+            data["transient_runs"] = int(n)
         PROCESSED_FILE.parent.mkdir(parents=True, exist_ok=True)
         PROCESSED_FILE.write_text(json.dumps(data, indent=2))
     except Exception as e:
