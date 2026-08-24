@@ -244,6 +244,13 @@ works on every distro.
 `--chunk-size 10000` is the safe default for anything over ~5 000 rows. See
 the [Cloudflare 524 footgun](#the-cloudflare-524-footgun) for why.
 
+Chunking here is about the 524 origin timeout, not about the file size cap.
+The cap is 40 MB per file as of 2026-08-06 (64 MB hard request ceiling, and a
+`.gz` is judged on its decompressed size), and since 2026-08-19 the portal
+splits an oversized upload server-side by itself. Every chunk this tool makes
+keeps both WiGLE header lines, which matters: a headerless fragment makes the
+importer read the older column layout and mistake signal strength for latitude.
+
 On Windows: `.venv\Scripts\python wigle_to_wdgwars.py ...`. Or just use
 `run.bat` from the [guided setup](#easiest-install--guided-setup) above.
 

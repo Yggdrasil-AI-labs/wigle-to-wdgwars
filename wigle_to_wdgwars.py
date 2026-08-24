@@ -990,8 +990,17 @@ PAYLOAD_TOO_LARGE_ERROR = "payload-too-large"
 def _halve_chunk(chunk_bytes: bytes) -> tuple[bytes, bytes] | None:
     """Bisect a WiGLE CSV chunk into two row-count halves, header preserved
     on each. Returns None if the chunk has fewer than 2 data rows (cannot
-    bisect further). Used to react to LOCOSP's 15 MB upload cap (2026-06-05):
-    on HTTP 413 the offending chunk is halved and both halves are retried.
+    bisect further). On HTTP 413 the offending chunk is halved and both halves
+    are retried.
+
+    Cap history: 15 MB (2026-06-05), 30 MB after the host move (2026-06-14),
+    40 MB since 2026-08-06, with a 64 MB hard request ceiling. Since 2026-08-19
+    the portal also splits an oversized upload server-side, keeping the header
+    on every part, so this bisect is a fallback rather than the main path.
+    Keeping both header lines on every piece is not optional: a headerless
+    fragment makes the importer fall back to the pre-Frequency WiGLE column
+    layout, which reads RSSI as latitude, and that has already triggered an
+    anti-cheat flag on a real account.
     """
     raw = chunk_bytes.decode("utf-8").splitlines(keepends=False)
     if len(raw) < 4:
