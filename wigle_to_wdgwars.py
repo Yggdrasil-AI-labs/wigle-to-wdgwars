@@ -679,7 +679,7 @@ def _setup_wdgwars_key() -> int:
             if not _prompt_yes_no(" Keep trying?", default=True):
                 return -1
             continue
-        print(" Validating key against wdgwars.pl/api/me ...", file=sys.stderr)
+        print(" Validating key against wdgwars.pl/endpoint/me ...", file=sys.stderr)
         rc = check_whoami(key)
         if rc != 0:
             print(" That key was rejected. Try again, or Ctrl+C to cancel.",
