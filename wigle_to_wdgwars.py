@@ -34,7 +34,7 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.6.5"
+__version__ = "1.6.6"
 GITHUB_REPO = "Yggdrasil-AI-labs/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
@@ -65,8 +65,13 @@ _SSL_CTX = ssl.create_default_context()
 
 # ───────────────────────────── Endpoints ─────────────────────────────────────
 
-ENDPOINT = "https://wdgwars.pl/api/upload-csv"
-SIGNED_ENDPOINT = gungnir.DEFAULT_API_URL  # https://wdgwars.pl/api/upload/
+# /endpoint/* is the server-side alias of /api/*: same router, same body.
+# The CSV push is the burstiest call this tool makes (one POST per chunk),
+# so it is the one that most wants to sit outside the /api/* pattern
+# Cloudflare's L7 shield gates during an event. Moved 2026-09-15 after both
+# paths were confirmed to answer identically. Override with --api-url.
+ENDPOINT = "https://wdgwars.pl/endpoint/upload-csv"
+SIGNED_ENDPOINT = gungnir.DEFAULT_API_URL  # https://wdgwars.pl/endpoint/upload/
 ME_ENDPOINT = gungnir.ME_API_URL
 
 # WiGLE: pull your own uploaded observations back out as CSV.

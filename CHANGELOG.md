@@ -6,14 +6,26 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.6] - 2026-09-15 - Every call to the portal is on one path family now
+
 ### Changed
 
-- **gungnir pinned to v0.1.5.** Picks up two fixes to the shared transport:
-  an HTML error page (a portal maintenance window, a proxy, a WAF) is now
-  summarised to one line instead of dumping markup into the terminal, and a
-  5xx give-up no longer calls itself a rejection, which used to send people
-  looking at their own data for a fault that was never theirs. Also fixes
-  gungnir self-reporting 0.1.3 in its User-Agent while v0.1.4 was installed.
+- **The CSV push moved from `/api/upload-csv` to `/endpoint/upload-csv`.**
+  Same router, same multipart body, same response: both paths were confirmed
+  to answer identically before the switch. `/endpoint/*` sits outside the
+  `/api/*` pattern that Cloudflare's L7 shield gates during an event, and the
+  chunked CSV push is the burstiest call this tool makes, so it is the one
+  that most wanted to be there. `--api-url` still overrides it.
+- **gungnir pinned to v0.1.6**, which moves key validation from `/api/me` to
+  `/endpoint/me` for the same reason. With both changes there is no call left
+  in this tool that goes through `/api/*`.
+- The v0.1.5 pin ships in this release too, having sat unreleased since
+  2026-08-20. It picks up two fixes to the shared transport: an HTML error
+  page (a portal maintenance window, a proxy, a WAF) is summarised to one
+  line instead of dumping markup into the terminal, and a 5xx give-up no
+  longer calls itself a rejection, which used to send people looking at their
+  own data for a fault that was never theirs. It also fixes gungnir
+  self-reporting 0.1.3 in its User-Agent while v0.1.4 was installed.
 
 ## [1.6.5] - 2026-08-20 - A queued WiGLE CSV no longer kills the daily run
 

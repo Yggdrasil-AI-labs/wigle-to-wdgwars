@@ -49,7 +49,7 @@ The portal accepts uploads on three endpoints, but **does not publish API
 docs**. Everyone who has built an uploader has reverse-engineered the
 contract from network captures or open-source firmware. This tool:
 
-1. Pushes a WiGLE-1.6 CSV to `/api/upload-csv` for Wi-Fi + BLE.
+1. Pushes a WiGLE-1.6 CSV to `/endpoint/upload-csv` for Wi-Fi + BLE.
 2. Pushes a JSON list of aircraft records to the signed `/api/upload/`
    endpoint.
 3. Optionally **pulls your uploads straight from WiGLE** (`--from-wigle`) and
@@ -183,7 +183,7 @@ A `--dry-run` tick that succeeded looks like (in the log / journal):
 ```
 [wigle] pulling 1 most-recent upload(s): <transid>
 [wigle] <transid>: <N> KB -> WDGWars
-[wdgwars] POST https://wdgwars.pl/api/upload-csv field=file file=<transid>.csv chunks=1 total=<N> KB
+[wdgwars] POST https://wdgwars.pl/endpoint/upload-csv field=file file=<transid>.csv chunks=1 total=<N> KB
 [wdgwars] dry-run: not sending
 ```
 
@@ -663,7 +663,7 @@ testing against a local mock or staging server without flipping
 `/etc/hosts`:
 
 ```bash
-./run.sh --api-url http://localhost:9999/api/upload-csv \
+./run.sh --api-url http://localhost:9999/endpoint/upload-csv \
          --dry-run /path/to/your.wiglecsv
 ```
 
@@ -685,7 +685,7 @@ unchanged. If you need to redirect those, use Muninn's `--api-url`.
 | Method | Path | Purpose | Auth | Body |
 |---|---|---|---|---|
 | `GET` | `/api/me` | Validate key, read stats/badges/gang | `X-API-Key: <key>` | - |
-| `POST` | `/api/upload-csv` | Bulk Wi-Fi/BLE ingest | `X-API-Key: <key>` | `multipart/form-data`, field `file=` (WiGLE-1.6 CSV) |
+| `POST` | `/endpoint/upload-csv` | Bulk Wi-Fi/BLE ingest | `X-API-Key: <key>` | `multipart/form-data`, field `file=` (WiGLE-1.6 CSV) |
 | `POST` | `/api/upload/` | Signed JSON ingest (aircraft, mesh, …) | `X-API-Key: <key>` | `application/json` envelope, see below |
 
 **Auth header is `X-API-Key`.** `Authorization: Bearer …` is rejected.
@@ -713,7 +713,7 @@ unchanged. If you need to redirect those, use Muninn's `--api-url`.
 }
 ```
 
-### `POST /api/upload-csv` response
+### `POST /endpoint/upload-csv` response
 
 ```json
 {
@@ -890,7 +890,8 @@ have records in this shape (e.g. exported from your own pipeline).
 ## Troubleshooting
 
 **`{"error":"Invalid data format"}`**: You hit `/api/upload` (signed) with
-a CSV. The CSV endpoint is `/api/upload-csv`. This tool uses the right
+a CSV. The CSV endpoint is `/endpoint/upload-csv` (`/api/upload-csv` is
+the same route under the other prefix). This tool uses the right
 endpoint by default; only hits when something rewrites the URL.
 
 **`[wigle] <transid>: CSV not ready yet`**: WiGLE builds each export CSV
