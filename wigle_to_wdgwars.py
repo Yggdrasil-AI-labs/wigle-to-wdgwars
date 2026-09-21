@@ -34,7 +34,7 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.6.6"
+__version__ = "1.7.0"
 GITHUB_REPO = "Yggdrasil-AI-labs/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
@@ -99,6 +99,61 @@ _client = gungnir.Client(
     version=__version__,
     user_agent_extra=GITHUB_URL,
 )
+
+# The gungnir release this tool was tested against, kept in step with the
+# pin in requirements.txt. That pin exists so a fresh install runs the bytes
+# we tested, but nothing enforced it at runtime and an older copy already in
+# site-packages wins silently.
+#
+# Muninn found this the hard way on 2026-09-20: a machine ran gungnir 0.1.0
+# against a v0.1.6 pin for weeks. 0.1.0 lacks check_deliberate_skip, so
+# every re-upload of a payload the server already had was reported as a
+# failed upload, 43 of 109 runs in one August sample. The symptom reads as a
+# server fault and cost hours to trace to an import path.
+#
+# Deliberately NOT in gungnir, unlike everything else shared: the whole
+# point is to catch a gungnir too old to be trusted, and a checker the old
+# gungnir does not carry cannot run.
+REQUIRED_GUNGNIR = "0.4.0"
+
+
+def _version_tuple(v: str) -> tuple[int, ...]:
+    """Parse a dotted version to a tuple of ints. Anything unparseable
+    returns an empty tuple, which the caller treats as "skip the check"."""
+    parts = []
+    for chunk in (v or "").lstrip("v").strip().split("."):
+        digits = ""
+        for ch in chunk:
+            if not ch.isdigit():
+                break
+            digits += ch
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+def _check_gungnir_version() -> None:
+    """Warn when the installed gungnir predates the release we pin.
+
+    A warning, not an exit: an opinion about someone's site-packages must
+    not be the thing that stops their feeder uploading. Silent when either
+    version cannot be read, rather than guessing."""
+    have = getattr(gungnir, "__version__", "")
+    have_t, want_t = _version_tuple(have), _version_tuple(REQUIRED_GUNGNIR)
+    if not have_t or not want_t or have_t >= want_t:
+        return
+    where = os.path.dirname(getattr(gungnir, "__file__", "") or "?")
+    print(
+        f"[wigle] WARNING: gungnir {have} is installed but this tool "
+        f"expects {REQUIRED_GUNGNIR} or newer.\n"
+        f"[wigle]   Imported from: {where}\n"
+        f"[wigle]   Older releases are missing fixes this version relies "
+        f"on, and the symptoms look like server faults.\n"
+        f"[wigle]   Fix: python -m pip install --upgrade -r "
+        f"requirements.txt",
+        file=sys.stderr,
+    )
 
 # ───────────────────────────── Config paths ──────────────────────────────────
 
@@ -864,6 +919,137 @@ def _apply_since(csv_bytes: bytes, since_seconds: int, name: str) -> bytes | Non
     return filtered
 
 
+# ───────────────────────── Already-sent holds ────────────────────────────────
+#
+# Second gate, after --since. That one drops rows too old to be worth
+# sending; this one drops rows the server has already told us it holds.
+#
+# A cron pushing the same export every few minutes re-sends the same last-7-
+# days rows every time. The server counts those as syncs that carried
+# nothing new and says so on the Uplink page ("your device has sent N syncs
+# in a row with nothing new in them"). It is right, and the fix is to not
+# make the request at all when every row in the file is one it already has.
+#
+# The mechanism lives in gungnir.holds, shared with Muninn and heimdall. The
+# only thing that is ours is the key: a network on WDGWars is identified by
+# its MAC and SSID together, not by either alone, so we build the composite
+# and gungnir stores it verbatim. The MAC is upper-cased because it is
+# case-insensitive; the SSID is left exactly as captured, because two
+# networks whose names differ only in case are two networks.
+HOLDS_TOOL = "wigle-to-wdgwars"
+HOLDS_AVAILABLE = hasattr(gungnir, "holds")
+
+
+def _row_key(fields: list[str]) -> str | None:
+    """The hold key for one WiGLE CSV row: MAC + SSID.
+
+    None when either half is unreadable, which means "always upload this
+    row". Dropping an observation over a bookkeeping field is a worse
+    outcome than sending it twice.
+    """
+    if len(fields) < 2:
+        return None
+    mac = (fields[0] or "").strip().upper()
+    if not mac:
+        return None
+    return f"{mac}|{(fields[1] or '').strip()}"
+
+
+def filter_csv_held(csv_bytes: bytes, state: dict, now: float
+                    ) -> tuple[bytes, dict]:
+    """Drop rows whose MAC+SSID is still held. Mirrors filter_csv_since:
+    header lines preserved verbatim, ``(filtered_bytes, stats)`` out.
+
+    An unparseable row is KEPT here, the opposite of the --since filter,
+    and deliberately: that filter is answering "is this row recent enough
+    to be worth sending", where discarding a row it cannot read is the
+    conservative answer. This one answers "has the server already got
+    this", where the conservative answer is to send it.
+    """
+    text = csv_bytes.decode("utf-8", errors="replace")
+    lines = text.splitlines(keepends=False)
+    if len(lines) < 2:
+        return csv_bytes, {"kept": 0, "dropped_held": 0, "total": 0}
+    banner, header_line, *data_rows = lines[0], lines[1], *lines[2:]
+    kept: list[str] = []
+    dropped_held = 0
+    total = 0
+    for line in data_rows:
+        if not line.strip():
+            continue
+        total += 1
+        try:
+            fields = next(_csv_mod.reader([line]))
+        except (StopIteration, _csv_mod.Error):
+            kept.append(line)
+            continue
+        if gungnir.holds.is_held(_row_key(fields), state, now):
+            dropped_held += 1
+        else:
+            kept.append(line)
+    out = banner + "\n" + header_line + "\n"
+    if kept:
+        out += "\n".join(kept) + "\n"
+    return out.encode("utf-8"), {
+        "kept": len(kept),
+        "dropped_held": dropped_held,
+        "total": total,
+    }
+
+
+def csv_row_keys(csv_bytes: bytes) -> list[str]:
+    """Every readable hold key in a CSV, for recording after an upload."""
+    text = csv_bytes.decode("utf-8", errors="replace")
+    lines = text.splitlines(keepends=False)
+    keys = []
+    for line in lines[2:]:
+        if not line.strip():
+            continue
+        try:
+            fields = next(_csv_mod.reader([line]))
+        except (StopIteration, _csv_mod.Error):
+            continue
+        key = _row_key(fields)
+        if key:
+            keys.append(key)
+    return keys
+
+
+def _apply_holds(csv_bytes: bytes, name: str, now: float) -> bytes | None:
+    """Apply the already-sent gate. Returns filtered bytes, or None if every
+    row is still held and the caller should skip the upload entirely.
+
+    Same contract as _apply_since, so both gates read the same at the call
+    site."""
+    if not HOLDS_AVAILABLE:
+        return csv_bytes
+    state = gungnir.holds.prune(gungnir.holds.load(HOLDS_TOOL), now)
+    if not state:
+        return csv_bytes
+    filtered, stats = filter_csv_held(csv_bytes, state, now)
+    if stats["dropped_held"] == 0:
+        return csv_bytes
+    if stats["kept"] == 0:
+        print(f"[wigle] {name}: nothing new to send "
+              f"({stats['total']} rows, all already accepted by the "
+              f"server). Skipping upload.", file=sys.stderr)
+        return None
+    print(f"[wigle] {name}: {stats['dropped_held']} of {stats['total']} rows "
+          f"are already on file, sending {stats['kept']}", file=sys.stderr)
+    return filtered
+
+
+def _record_holds(csv_bytes: bytes, sent_at: float, single_chunk: bool
+                  ) -> None:
+    """Hold the rows we just uploaded, for as long as the server's answer
+    justifies."""
+    if not HOLDS_AVAILABLE:
+        return
+    imported = gungnir.holds.imported_count(HOLDS_TOOL, sent_at, single_chunk)
+    gungnir.holds.record_keys(HOLDS_TOOL, csv_row_keys(csv_bytes), sent_at,
+                              gungnir.holds.ttl_for(imported))
+
+
 def _humanize_seconds(s: int) -> str:
     """Pretty-print a seconds count back to e.g. '7d' or '12h'."""
     for unit, suffix in ((604800, "w"), (86400, "d"), (3600, "h"),
@@ -1180,9 +1366,18 @@ def upload_csv_bytes(csv_bytes: bytes, name: str, key: str, field: str,
     filtered = _apply_since(csv_bytes, since_seconds, name)
     if filtered is None:
         return 0
+    if not dry_run:
+        held = _apply_holds(filtered, name, time.time())
+        if held is None:
+            return 0
+        filtered = held
     _cooldown_check_and_sleep()
     chunks = _split_bytes(filtered, chunk_rows) if chunk_rows else [filtered]
-    return _upload_chunks(chunks, name, key, field, dry_run, cooldown_sec)
+    sent_at = time.time()
+    rc = _upload_chunks(chunks, name, key, field, dry_run, cooldown_sec)
+    if rc == 0 and not dry_run:
+        _record_holds(filtered, sent_at, len(chunks) == 1)
+    return rc
 
 
 def _upload_csv_file(csv_path: Path, key: str, field: str, dry_run: bool,
@@ -1214,9 +1409,18 @@ def upload_csv(csv_path: Path, key: str, field: str, dry_run: bool,
     filtered = _apply_since(raw, since_seconds, csv_path.name)
     if filtered is None:
         return 0
+    if not dry_run:
+        held = _apply_holds(filtered, csv_path.name, time.time())
+        if held is None:
+            return 0
+        filtered = held
     _cooldown_check_and_sleep()
     chunks = _split_bytes(filtered, chunk_rows) if chunk_rows else [filtered]
-    return _upload_chunks(chunks, csv_path.name, key, field, dry_run, cooldown_sec)
+    sent_at = time.time()
+    rc = _upload_chunks(chunks, csv_path.name, key, field, dry_run, cooldown_sec)
+    if rc == 0 and not dry_run:
+        _record_holds(filtered, sent_at, len(chunks) == 1)
+    return rc
 
 
 # ───────────────────────────── Signed JSON path ──────────────────────────────
@@ -2236,6 +2440,11 @@ def main() -> int:
     ap.add_argument("--version", action="version",
                     version=f"wigle-to-wdgwars {__version__}")
     args = ap.parse_args()
+
+    # Before anything that talks to the server: a wrong gungnir misreports
+    # what the server did, so this is the one line that explains the
+    # symptoms that follow.
+    _check_gungnir_version()
 
     # --update is a top-level mode; runs before anything else.
     if args.update:

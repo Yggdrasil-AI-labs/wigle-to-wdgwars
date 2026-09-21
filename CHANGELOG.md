@@ -6,6 +6,65 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-21 - Do not re-send rows the server already has
+
+### Added
+
+- **An already-sent gate.** A cron pushing the same export every few
+  minutes re-sends the same rows every time. The server counts those as
+  syncs that carried nothing new and says so on the Uplink page ("your
+  device has sent N syncs in a row with nothing new in them"). It is right:
+  those rows landed on an earlier push. Now the request is not made at all
+  when every row in the file is one the server has already confirmed.
+
+  This is the second gate, after `--since`. That one drops rows too old to
+  be worth sending; this one drops rows already on file. A file emptied by
+  either is skipped rather than posted.
+
+  The mechanism is `gungnir.holds`, shared with Muninn and heimdall rather
+  than written here a second time. What is ours is the key: a network on
+  WDGWars is identified by its **MAC and SSID together**, so the composite
+  is what gets held. The MAC is upper-cased because it is case-insensitive;
+  the SSID is left exactly as captured, because two networks whose names
+  differ only in case are two networks.
+
+  How long a row is held depends on what the server said:
+
+  - **A day** when the upload came back having imported nothing, which is
+    the server saying it already held every row in that payload.
+  - **An hour** when it imported something (the response does not say
+    *which* rows were new), or when the counters could not be read at all.
+    A multi-chunk upload counts as unreadable, since its watermark
+    describes only the last chunk.
+
+  `--dry-run` neither consults nor records holds. A failed upload records
+  nothing, so it retries. A row whose MAC cannot be read, or a row the CSV
+  reader cannot parse, is always uploaded: suppressing an observation over
+  a bookkeeping field is a worse outcome than sending it twice.
+
+- **A gungnir version guard.** Warns at startup when the installed gungnir
+  predates the pin, naming the directory it was imported from. Muninn found
+  this the hard way: a machine ran gungnir 0.1.0 against a v0.1.6 pin for
+  weeks, and every re-upload of a payload the server already had was
+  reported as a failed upload. The symptom reads as a server fault. It
+  warns and continues, and an older gungnir simply turns the gate off
+  rather than failing an upload.
+
+### Changed
+
+- Pinned gungnir v0.4.0 (from v0.1.6).
+
+### Fixed
+
+- **The test suite could write to the real config directory.** The live-key
+  guard stops tests posting to the real account; nothing stopped them
+  writing state into it. The first run after the gate landed recorded the
+  fixture MACs into the operator's own holds file, and every run after that
+  read them back and skipped uploads the tests expected to make. Ten tests
+  failed for reasons unrelated to the code under test, and because the
+  state persisted between runs it looked like a code bug. gungnir state now
+  points at a throwaway directory, reset per test.
+
 ## [1.6.6] - 2026-09-15 - Every call to the portal is on one path family now
 
 ### Changed

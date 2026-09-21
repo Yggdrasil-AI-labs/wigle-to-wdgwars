@@ -79,3 +79,62 @@ def _check_live_key_guard() -> None:
 
 
 _check_live_key_guard()
+
+
+def _isolate_gungnir_state() -> None:
+    """Point every gungnir state file at a throwaway directory.
+
+    The live-key guard above stops the suite posting to the real account.
+    This stops it WRITING to the real config directory, which is a separate
+    hole and it was open: the first run after the holds gate landed recorded
+    the fixture MACs into the operator's own holds.json, and every run after
+    that read them back and skipped uploads the tests expected to make. Ten
+    tests failed for reasons that had nothing to do with the code under
+    test, and because the state persisted between runs it looked like one.
+
+    Patched per module rather than on gungnir.keys, because holds and hwm
+    bind `config_dir` at import and would keep the original reference.
+    """
+    import atexit
+    import shutil
+    import tempfile
+
+    try:
+        import gungnir
+    except ImportError:
+        return
+
+    tmp = tempfile.mkdtemp(prefix="wigle-tests-gungnir-")
+    atexit.register(shutil.rmtree, tmp, True)
+
+    def _fake_config_dir(tool: str) -> Path:
+        d = Path(tmp) / tool
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    for name in ("holds", "hwm", "cooldown", "keys"):
+        mod = getattr(gungnir, name, None)
+        if mod is not None and hasattr(mod, "config_dir"):
+            mod.config_dir = _fake_config_dir
+
+    # Per test, not just per run. Holds persist by design, so without this
+    # one test's uploads suppress the next test's and the suite's result
+    # depends on execution order. Wrapping TestCase.run keeps all 169
+    # existing tests untouched; a test that wants the gate to carry state
+    # drives it within a single test method.
+    import unittest as _unittest
+
+    _real_run = _unittest.TestCase.run
+
+    def _run_with_clean_state(self, *a, **kw):
+        for child in Path(tmp).glob("*/*"):
+            try:
+                child.unlink()
+            except OSError:
+                pass
+        return _real_run(self, *a, **kw)
+
+    _unittest.TestCase.run = _run_with_clean_state
+
+
+_isolate_gungnir_state()

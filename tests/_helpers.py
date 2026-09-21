@@ -23,8 +23,15 @@ def row(mac_suffix: int) -> bytes:
     ).encode()
 
 
-def csv_with_rows(n: int) -> bytes:
-    return HEADER + b"".join(row(i) for i in range(n))
+def csv_with_rows(n: int, offset: int = 0) -> bytes:
+    """``n`` rows, starting at MAC suffix ``offset``.
+
+    The offset matters since v1.7.0: two exports built with the same offset
+    are byte-identical, and the already-sent gate will correctly collapse
+    the second one into nothing. Real WiGLE exports for different transids
+    hold different networks, so a test driving several uploads in one run
+    wants a different offset for each."""
+    return HEADER + b"".join(row(i + offset) for i in range(n))
 
 
 def ok_envelope(imported: int = 1, total: int = 1) -> str:

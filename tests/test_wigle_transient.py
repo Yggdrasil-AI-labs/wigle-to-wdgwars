@@ -60,7 +60,10 @@ def _http_error(url: str, code: int, body: bytes = b"err"):
 
 
 def _ready(tid, url):
-    return _Resp(csv_with_rows(1))
+    # A distinct network per transid. Identical exports would be collapsed
+    # by the already-sent gate, which is correct behaviour but not what
+    # these tests are about.
+    return _Resp(csv_with_rows(1, offset=TIDS.index(tid) if tid in TIDS else 0))
 
 
 def _queued(tid, url):
