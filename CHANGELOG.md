@@ -6,6 +6,38 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-09-21 - Hold length now uses the whole run, not the last POST
+
+### Fixed
+
+- **A 413 auto-split could earn a day-long hold for rows the server had
+  just told us were new.** v1.7.0 chose the hold length from gungnir's
+  watermark and told it to trust that as the total whenever
+  `len(chunks) == 1`. But `_upload_chunks` bisects a chunk on a 413 and
+  keeps POSTing the halves, so "one chunk" can be several requests, and
+  the watermark records only the last of them.
+
+  Concretely: the whole CSV goes as one chunk, 413s, and splits. The left
+  half imports 5 new networks; the right half happens to be entirely
+  already-known and comes back `imported: 0`. That 0 was read as the
+  verdict for the whole file, stamping a 24-hour hold across every row in
+  it, including the 5 the server had just accepted as new and anything it
+  had quietly dropped.
+
+  Hold length now comes from the run summary this module already builds,
+  the aggregate across every POST it made. Found by an adversarial review
+  of the v1.7.0 change, not by the tests, which mocked `_upload_chunks`
+  wholesale and so could not see the bisection at all.
+
+- **A 409 `duplicate_upload` now earns the confirmed hold.** It is the
+  clearest statement the server can make (it holds this exact file
+  already), but it carries no counters and never wrote a watermark, so it
+  had been falling through to "unknown" and the one-hour hold.
+
+### Changed
+
+- Pinned gungnir v0.4.1 (from v0.4.0).
+
 ## [1.7.0] - 2026-09-21 - Do not re-send rows the server already has
 
 ### Added

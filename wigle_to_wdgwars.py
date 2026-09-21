@@ -34,7 +34,7 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.7.0"
+__version__ = "1.7.1"
 GITHUB_REPO = "Yggdrasil-AI-labs/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
@@ -114,7 +114,7 @@ _client = gungnir.Client(
 # Deliberately NOT in gungnir, unlike everything else shared: the whole
 # point is to catch a gungnir too old to be trusted, and a checker the old
 # gungnir does not carry cannot run.
-REQUIRED_GUNGNIR = "0.4.0"
+REQUIRED_GUNGNIR = "0.4.1"
 
 
 def _version_tuple(v: str) -> tuple[int, ...]:
@@ -1039,15 +1039,36 @@ def _apply_holds(csv_bytes: bytes, name: str, now: float) -> bytes | None:
     return filtered
 
 
-def _record_holds(csv_bytes: bytes, sent_at: float, single_chunk: bool
-                  ) -> None:
+def _imported_total() -> int | None:
+    """How many rows the last upload imported in total, or None if that
+    cannot be established.
+
+    Read from the run summary this module builds, NOT from gungnir's
+    watermark. The watermark records the last successful chunk, and a 413
+    bisects one logical chunk into several POSTs, so trusting it would let
+    a final half that imported nothing earn a day-long hold over a whole
+    file whose other half was full of new networks.
+
+    A 409 duplicate_upload is the clearest confirmation the server can
+    give -- it holds this exact file already -- and counts as zero
+    imported.
+    """
+    summary = _LAST_UPLOAD_SUMMARY
+    if not isinstance(summary, dict):
+        return None
+    if summary.get("duplicate_upload"):
+        return 0
+    value = summary.get("imported")
+    return int(value) if isinstance(value, (int, float)) else None
+
+
+def _record_holds(csv_bytes: bytes, sent_at: float) -> None:
     """Hold the rows we just uploaded, for as long as the server's answer
     justifies."""
     if not HOLDS_AVAILABLE:
         return
-    imported = gungnir.holds.imported_count(HOLDS_TOOL, sent_at, single_chunk)
     gungnir.holds.record_keys(HOLDS_TOOL, csv_row_keys(csv_bytes), sent_at,
-                              gungnir.holds.ttl_for(imported))
+                              gungnir.holds.ttl_for(_imported_total()))
 
 
 def _humanize_seconds(s: int) -> str:
@@ -1226,6 +1247,14 @@ def _aggregate(payloads: list[dict]) -> dict:
     return out
 
 
+# The summary of the most recent _upload_chunks run: the aggregate across
+# every POST it made, which is NOT the last chunk's response. _record_holds
+# needs the total, and a 413 bisects one logical chunk into several POSTs,
+# so neither len(chunks) nor gungnir's per-chunk watermark can answer "what
+# did this upload import in total".
+_LAST_UPLOAD_SUMMARY: dict | None = None
+
+
 def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
                    dry_run: bool, cooldown_sec: float) -> int:
     """POST pre-split CSV chunks to WDGWars. Returns shell exit code (0 ok).
@@ -1236,6 +1265,11 @@ def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
     bottoms out when a chunk is one row and still 413 (recorded as a failure,
     other chunks continue).
     """
+    # Cleared before anything can return, including the dry-run path, so
+    # "_LAST_UPLOAD_SUMMARY describes the last upload" is never a lie a
+    # later reader could act on.
+    global _LAST_UPLOAD_SUMMARY
+    _LAST_UPLOAD_SUMMARY = None
     total_kb = sum(len(c) for c in chunks) / 1024
     print(
         f"[wdgwars] POST {ENDPOINT} field={field} file={name} "
@@ -1329,9 +1363,11 @@ def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
             file=sys.stderr,
         )
     if len(payloads) == 1:
+        _LAST_UPLOAD_SUMMARY = payloads[0]
         print(json.dumps(payloads[0]))
         return 0 if payloads[0].get("ok") else 1
     agg = _aggregate(payloads)
+    _LAST_UPLOAD_SUMMARY = agg
     print(json.dumps(agg))
     return 0 if agg.get("ok") else 1
 
@@ -1376,7 +1412,7 @@ def upload_csv_bytes(csv_bytes: bytes, name: str, key: str, field: str,
     sent_at = time.time()
     rc = _upload_chunks(chunks, name, key, field, dry_run, cooldown_sec)
     if rc == 0 and not dry_run:
-        _record_holds(filtered, sent_at, len(chunks) == 1)
+        _record_holds(filtered, sent_at)
     return rc
 
 
@@ -1419,7 +1455,7 @@ def upload_csv(csv_path: Path, key: str, field: str, dry_run: bool,
     sent_at = time.time()
     rc = _upload_chunks(chunks, csv_path.name, key, field, dry_run, cooldown_sec)
     if rc == 0 and not dry_run:
-        _record_holds(filtered, sent_at, len(chunks) == 1)
+        _record_holds(filtered, sent_at)
     return rc
 
 
