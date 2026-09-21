@@ -21,3 +21,7 @@ hwm.json
 # Local host-specific venv wrappers (hardcode absolute local paths)
 run-venv.sh
 wdgwars-run
+
+# RTK leftovers. The hook that wrote these was removed 2026-09-13; the
+# db carries local paths and has no business in a public repo.
+rtk/
