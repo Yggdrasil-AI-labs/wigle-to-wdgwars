@@ -34,7 +34,7 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.9.0"
+__version__ = "1.9.1"
 GITHUB_REPO = "Yggdrasil-AI-labs/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
@@ -114,7 +114,7 @@ _client = gungnir.Client(
 # Deliberately NOT in gungnir, unlike everything else shared: the whole
 # point is to catch a gungnir too old to be trusted, and a checker the old
 # gungnir does not carry cannot run.
-REQUIRED_GUNGNIR = "0.6.0"
+REQUIRED_GUNGNIR = "0.6.1"
 
 
 def _version_tuple(v: str) -> tuple[int, ...]:

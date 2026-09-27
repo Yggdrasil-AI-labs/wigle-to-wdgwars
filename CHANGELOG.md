@@ -6,6 +6,15 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-09-27 - Owner-only holds files
+
+### Changed
+
+- **Pinned gungnir v0.6.1**, which creates holds files 0600. This one
+  matters most here: the holds file is 30 days of MAC + SSID + FirstSeen,
+  a timeline of which networks you were near and when, and it was
+  world-readable. Existing files tighten on the next push.
+
 ## [1.9.0] - 2026-09-27 - Per-key holds and --reset-holds
 
 ### Added
