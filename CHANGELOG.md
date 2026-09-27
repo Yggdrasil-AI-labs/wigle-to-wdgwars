@@ -6,6 +6,14 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-09-27 - Windows: saves no longer lost to a busy file
+
+### Changed
+
+- **Pinned gungnir v0.6.2**, which retries saving the holds file when
+  another process has it open (Windows only), instead of giving up and
+  re-uploading in full next time.
+
 ## [1.9.1] - 2026-09-27 - Owner-only holds files
 
 ### Changed
