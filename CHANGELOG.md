@@ -6,6 +6,19 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-27 - Per-key holds and --reset-holds
+
+### Added
+
+- **Holds are kept per API key.** With the 30-day hold, pointing a feeder
+  at another account's key would otherwise leave that account without
+  every row the first one was sent, for a month. Only a truncated hash of
+  the key reaches the file name. The pre-1.9.0 `holds.json` is no longer
+  read, costing at most one full push.
+- **`--reset-holds`** deletes every holds file, all keys, so the next push
+  uploads in full. Needs no API key.
+- **Pinned gungnir v0.6.0**; an older one turns the gate off.
+
 ## [1.8.0] - 2026-09-27 - Hold the observation, not the network
 
 ### Changed

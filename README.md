@@ -560,7 +560,9 @@ and skips the sync entirely when that leaves nothing, so an unchanged file
 never shows up as a "sync with nothing new" on your Uplink page. A row is
 identified by its MAC, SSID and FirstSeen time, so a network you re-scan on
 a later drive is a new row and always goes up: re-scans still reinforce,
-refine position and reset decay. Pick the recipe for your OS below.
+refine position and reset decay. Holds are kept per API key, and
+`--reset-holds` deletes them if they ever look wrong. Pick the recipe for
+your OS below.
 
 ### Windows - Task Scheduler
 

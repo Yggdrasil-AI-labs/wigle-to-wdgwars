@@ -34,7 +34,7 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.8.0"
+__version__ = "1.9.0"
 GITHUB_REPO = "Yggdrasil-AI-labs/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
@@ -114,7 +114,7 @@ _client = gungnir.Client(
 # Deliberately NOT in gungnir, unlike everything else shared: the whole
 # point is to catch a gungnir too old to be trusted, and a checker the old
 # gungnir does not carry cannot run.
-REQUIRED_GUNGNIR = "0.5.0"
+REQUIRED_GUNGNIR = "0.6.0"
 
 
 def _version_tuple(v: str) -> tuple[int, ...]:
@@ -948,7 +948,8 @@ def _apply_since(csv_bytes: bytes, since_seconds: int, name: str) -> bytes | Non
 # has no observation key, so every row in it uploads.
 HOLDS_TOOL = "wigle-to-wdgwars"
 HOLDS_AVAILABLE = (hasattr(gungnir, "holds")
-                   and hasattr(gungnir.holds, "ACCEPTED_TTL"))
+                   and hasattr(gungnir.holds, "ACCEPTED_TTL")
+                   and hasattr(gungnir.holds, "scoped"))
 
 
 def _firstseen_index(header_line: str) -> int | None:
@@ -1043,7 +1044,14 @@ def csv_row_keys(csv_bytes: bytes) -> list[str]:
     return keys
 
 
-def _apply_holds(csv_bytes: bytes, name: str, now: float) -> bytes | None:
+def _holds_scope(key: str | None) -> str:
+    """One holds file per API key (v1.9.0): what one account was sent says
+    nothing about what another has. No key gives the unscoped file."""
+    return gungnir.holds.scoped(HOLDS_TOOL, key)
+
+
+def _apply_holds(csv_bytes: bytes, name: str, now: float,
+                 key: str | None = None) -> bytes | None:
     """Apply the already-sent gate. Returns filtered bytes, or None if every
     row is still held and the caller should skip the upload entirely.
 
@@ -1051,7 +1059,7 @@ def _apply_holds(csv_bytes: bytes, name: str, now: float) -> bytes | None:
     site."""
     if not HOLDS_AVAILABLE:
         return csv_bytes
-    state = gungnir.holds.prune(gungnir.holds.load(HOLDS_TOOL), now)
+    state = gungnir.holds.prune(gungnir.holds.load(_holds_scope(key)), now)
     if not state:
         return csv_bytes
     filtered, stats = filter_csv_held(csv_bytes, state, now)
@@ -1067,7 +1075,8 @@ def _apply_holds(csv_bytes: bytes, name: str, now: float) -> bytes | None:
     return filtered
 
 
-def _record_holds(csv_bytes: bytes, sent_at: float) -> None:
+def _record_holds(csv_bytes: bytes, sent_at: float,
+                  key: str | None = None) -> None:
     """Hold the rows we just uploaded for ACCEPTED_TTL.
 
     No longer depends on what the server said it imported. The key is the
@@ -1076,8 +1085,25 @@ def _record_holds(csv_bytes: bytes, sent_at: float) -> None:
     from the run summary no longer has anything to decide."""
     if not HOLDS_AVAILABLE:
         return
-    gungnir.holds.record_keys(HOLDS_TOOL, csv_row_keys(csv_bytes), sent_at,
+    gungnir.holds.record_keys(_holds_scope(key), csv_row_keys(csv_bytes),
+                              sent_at,
                               gungnir.holds.ACCEPTED_TTL)
+
+
+def cmd_reset_holds() -> int:
+    """--reset-holds: delete every already-sent holds file, all keys."""
+    if not HOLDS_AVAILABLE:
+        print("[wigle] this gungnir has no per-key holds; nothing to reset. "
+              "Run update.", file=sys.stderr)
+        return 0
+    removed = gungnir.holds.reset(HOLDS_TOOL)
+    if not removed:
+        print("[wigle] no holds to reset.", file=sys.stderr)
+        return 0
+    for f in removed:
+        print(f"[wigle] removed {f}", file=sys.stderr)
+    print("[wigle] the next push uploads in full.", file=sys.stderr)
+    return 0
 
 
 def _humanize_seconds(s: int) -> str:
@@ -1397,7 +1423,7 @@ def upload_csv_bytes(csv_bytes: bytes, name: str, key: str, field: str,
     if filtered is None:
         return 0
     if not dry_run:
-        held = _apply_holds(filtered, name, time.time())
+        held = _apply_holds(filtered, name, time.time(), key)
         if held is None:
             return 0
         filtered = held
@@ -1406,7 +1432,7 @@ def upload_csv_bytes(csv_bytes: bytes, name: str, key: str, field: str,
     sent_at = time.time()
     rc = _upload_chunks(chunks, name, key, field, dry_run, cooldown_sec)
     if rc == 0 and not dry_run:
-        _record_holds(filtered, sent_at)
+        _record_holds(filtered, sent_at, key)
     return rc
 
 
@@ -1440,7 +1466,7 @@ def upload_csv(csv_path: Path, key: str, field: str, dry_run: bool,
     if filtered is None:
         return 0
     if not dry_run:
-        held = _apply_holds(filtered, csv_path.name, time.time())
+        held = _apply_holds(filtered, csv_path.name, time.time(), key)
         if held is None:
             return 0
         filtered = held
@@ -1449,7 +1475,7 @@ def upload_csv(csv_path: Path, key: str, field: str, dry_run: bool,
     sent_at = time.time()
     rc = _upload_chunks(chunks, csv_path.name, key, field, dry_run, cooldown_sec)
     if rc == 0 and not dry_run:
-        _record_holds(filtered, sent_at)
+        _record_holds(filtered, sent_at, key)
     return rc
 
 
@@ -2422,6 +2448,9 @@ def main() -> int:
                          "WiGLE history can blow the LOCOSP daily cap.")
     ap.add_argument("--whoami", action="store_true",
                     help="GET /api/me to validate the API key, then exit")
+    ap.add_argument("--reset-holds", action="store_true",
+                    help="forget which rows have been sent, for every API "
+                         "key, so the next push uploads in full; exits after.")
     ap.add_argument("--aircraft-json", metavar="FILE",
                     help="push a JSON list of aircraft records to the signed /api/upload/ endpoint")
     ap.add_argument("--aircraft-batch", type=int, default=500,
@@ -2531,6 +2560,9 @@ def main() -> int:
             return interactive_setup()
         return interactive_schedule_setup(have_wigle=WIGLE_KEY_FILE.exists()
                                           or bool(os.environ.get("WIGLE_API_KEY")))
+
+    if args.reset_holds:
+        return cmd_reset_holds()
 
     key = load_key(args.key)
 

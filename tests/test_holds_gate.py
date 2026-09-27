@@ -21,6 +21,7 @@ Run: WIGLE_TEST_ALLOW_LIVE_KEY=1 python -m unittest tests.test_holds_gate
 from __future__ import annotations
 
 import pathlib
+import sys
 import time
 import unittest
 from unittest import mock
@@ -239,6 +240,34 @@ class EndToEndTests(unittest.TestCase):
         _, up = self._upload(csv, dry_run=True)
         self.assertEqual(up.call_count, 1,
                          "a dry run must not be suppressed by holds")
+
+
+
+class PerKeyAndResetTests(unittest.TestCase):
+    """v1.9.0: holds are per API key, and --reset-holds clears them all."""
+
+    def _upload(self, csv, key):
+        with mock.patch.object(w2w, "_upload_chunks", return_value=0) as up:
+            with mock.patch.object(w2w, "_cooldown_check_and_sleep"):
+                w2w.upload_csv_bytes(csv, "x.csv", key, "file", dry_run=False)
+        return up.call_count
+
+    def test_a_second_key_is_not_held_by_the_first(self):
+        csv = csv_with_rows(2, offset=40)
+        self.assertEqual(self._upload(csv, "key-a"), 1)
+        self.assertEqual(self._upload(csv, "key-a"), 0, "same key: held")
+        self.assertEqual(self._upload(csv, "key-b"), 1,
+                         "another account has not been sent these rows")
+
+    def test_reset_holds_clears_every_key(self):
+        csv = csv_with_rows(2, offset=50)
+        self._upload(csv, "key-a")
+        with mock.patch.object(sys, "argv",
+                               ["wigle_to_wdgwars.py", "--reset-holds"]):
+            rc = w2w.main()
+        self.assertEqual(rc, 0)
+        self.assertEqual(self._upload(csv, "key-a"), 1,
+                         "after a reset the rows go up again")
 
 
 if __name__ == "__main__":
