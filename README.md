@@ -555,9 +555,12 @@ all. Swap the command in any recipe below for:
 
 **The file-based version:** always export (or save) your WiGLE file to the
 *same path*, e.g. `wardrive.wiglecsv.gz`, and point a timer at that path.
-Each run re-pushes the file; WDGWars dedupes server-side, so re-sending the
-same data is harmless and still picks up any new rows or merged location
-samples. Pick the recipe for your OS below.
+Each run sends only the rows it has not already sent in the last 30 days,
+and skips the sync entirely when that leaves nothing, so an unchanged file
+never shows up as a "sync with nothing new" on your Uplink page. A row is
+identified by its MAC, SSID and FirstSeen time, so a network you re-scan on
+a later drive is a new row and always goes up: re-scans still reinforce,
+refine position and reset decay. Pick the recipe for your OS below.
 
 ### Windows - Task Scheduler
 

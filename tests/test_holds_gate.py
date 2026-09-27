@@ -3,18 +3,17 @@
 A cron pushing the same export every few minutes re-sends the same rows
 every time. The server counts those as syncs that carried nothing new and
 says so on the Uplink page. The mechanism is gungnir.holds, shared with
-Muninn and heimdall; what is ours is the key (a network is its MAC and
-SSID together) and the two CSV filters around it.
+Muninn and heimdall; what is ours is the key and the two CSV filters
+around it.
 
-Muninn shipped this first and got it wrong three times, so the rules those
-mistakes produced are pinned here too:
+Since v1.8.0 the key is the observation (MAC + SSID + FirstSeen) and every
+accepted row is held for ACCEPTED_TTL (30 days). The v1.7.x key was the
+network alone, which suppressed re-scans the server scores, refines
+position from, and uses to reset decay. What is pinned here:
 
-- A response that imported nothing means the server already held every row
-  in the payload, which earns the day-long hold. Anything imported keeps
-  the short one, because the response does not say WHICH rows were new.
-- Unknown is not zero. Hold length comes from this module's own run
-  summary, the aggregate over every POST, because a 413 bisects one
-  logical chunk into several and gungnir's watermark keeps only the last.
+- The same row pushed again is held; the same network seen at a new
+  FirstSeen is not.
+- A file with no FirstSeen column holds nothing.
 - Every unreadable thing errs toward uploading.
 
 Run: WIGLE_TEST_ALLOW_LIVE_KEY=1 python -m unittest tests.test_holds_gate
@@ -32,28 +31,39 @@ import wigle_to_wdgwars as w2w
 from tests._helpers import HEADER, csv_with_rows
 
 
+FS = 3  # FirstSeen column in the fixture header
+T = "2026-06-05 10:00:00"
+
+
 class RowKeyTests(unittest.TestCase):
-    def test_key_is_mac_and_ssid_together(self):
-        self.assertEqual(w2w._row_key(["aa:bb:cc", "CoffeeShop"]),
-                         "AA:BB:CC|CoffeeShop")
+    def test_key_is_mac_ssid_and_firstseen(self):
+        self.assertEqual(w2w._row_key(["aa:bb:cc", "CoffeeShop", "[WPA2]", T], FS),
+                         f"AA:BB:CC|CoffeeShop|{T}")
+
+    def test_a_rescan_is_a_different_key(self):
+        # The point of v1.8.0: tomorrow's drive past the same network is
+        # new data to the server (reinforce, position, decay reset).
+        self.assertNotEqual(
+            w2w._row_key(["aa:bb:cc", "Net", "", T], FS),
+            w2w._row_key(["aa:bb:cc", "Net", "", "2026-06-06 09:00:00"], FS))
 
     def test_mac_case_is_folded_but_ssid_case_is_not(self):
-        # A MAC is case-insensitive. Two SSIDs differing only in case are
-        # two different networks, and folding them would suppress one.
-        self.assertEqual(w2w._row_key(["AA:BB:CC", "x"]),
-                         w2w._row_key(["aa:bb:cc", "x"]))
-        self.assertNotEqual(w2w._row_key(["aa:bb:cc", "Net"]),
-                            w2w._row_key(["aa:bb:cc", "net"]))
+        self.assertEqual(w2w._row_key(["AA:BB:CC", "x", "", T], FS),
+                         w2w._row_key(["aa:bb:cc", "x", "", T], FS))
+        self.assertNotEqual(w2w._row_key(["aa:bb:cc", "Net", "", T], FS),
+                            w2w._row_key(["aa:bb:cc", "net", "", T], FS))
 
     def test_an_unreadable_row_has_no_key(self):
         # None means "always upload it".
-        self.assertIsNone(w2w._row_key([]))
-        self.assertIsNone(w2w._row_key(["", "ssid"]))
-        self.assertIsNone(w2w._row_key(["   ", "ssid"]))
+        self.assertIsNone(w2w._row_key([], FS))
+        self.assertIsNone(w2w._row_key(["", "ssid", "", T], FS))
+        self.assertIsNone(w2w._row_key(["aa:bb:cc", "ssid", "", ""], FS))
+        self.assertIsNone(w2w._row_key(["aa:bb:cc", "ssid"], FS))
 
-    def test_a_missing_ssid_still_keys_on_the_mac(self):
-        self.assertEqual(w2w._row_key(["aa:bb:cc"]), None)
-        self.assertEqual(w2w._row_key(["aa:bb:cc", ""]), "AA:BB:CC|")
+    def test_no_firstseen_column_means_no_key(self):
+        self.assertIsNone(w2w._row_key(["aa:bb:cc", "ssid", "", T], None))
+        self.assertIsNone(w2w._firstseen_index("MAC,SSID,AuthMode,Channel"))
+        self.assertEqual(w2w._firstseen_index("MAC,SSID,AuthMode,FirstSeen"), 3)
 
 
 class FilterTests(unittest.TestCase):
@@ -62,7 +72,7 @@ class FilterTests(unittest.TestCase):
         self.csv = csv_with_rows(3)
 
     def _state_for(self, *suffixes):
-        return {f"AA:BB:CC:00:00:{i:02X}|Net{i}": self.now + 999
+        return {f"AA:BB:CC:00:00:{i:02X}|Net{i}|{T}": self.now + 999
                 for i in suffixes}
 
     def test_held_rows_are_dropped_and_the_rest_kept(self):
@@ -79,7 +89,7 @@ class FilterTests(unittest.TestCase):
         self.assertTrue(out.startswith(HEADER))
 
     def test_an_expired_hold_does_not_drop_the_row(self):
-        state = {"AA:BB:CC:00:00:00|Net0": self.now - 1}
+        state = {f"AA:BB:CC:00:00:00|Net0|{T}": self.now - 1}
         _, stats = w2w.filter_csv_held(self.csv, state, self.now)
         self.assertEqual(stats["dropped_held"], 0)
 
@@ -101,8 +111,15 @@ class FilterTests(unittest.TestCase):
 
     def test_row_keys_round_trip(self):
         self.assertEqual(w2w.csv_row_keys(csv_with_rows(2)),
-                         ["AA:BB:CC:00:00:00|Net0",
-                          "AA:BB:CC:00:00:01|Net1"])
+                         [f"AA:BB:CC:00:00:00|Net0|{T}",
+                          f"AA:BB:CC:00:00:01|Net1|{T}"])
+
+    def test_a_file_without_firstseen_holds_nothing(self):
+        csv = csv_with_rows(2).replace(b"FirstSeen", b"Seen")
+        self.assertEqual(w2w.csv_row_keys(csv), [])
+        state = {f"AA:BB:CC:00:00:00|Net0|{T}": self.now + 999}
+        _, stats = w2w.filter_csv_held(csv, state, self.now)
+        self.assertEqual(stats["kept"], 2)
 
 
 class ApplyHoldsTests(unittest.TestCase):
@@ -122,7 +139,7 @@ class ApplyHoldsTests(unittest.TestCase):
 
     def test_a_partially_held_file_uploads_the_remainder(self):
         gungnir.holds.record_keys(w2w.HOLDS_TOOL,
-                                  ["AA:BB:CC:00:00:00|Net0"], self.now)
+                                  [f"AA:BB:CC:00:00:00|Net0|{T}"], self.now)
         out = w2w._apply_holds(csv_with_rows(2), "x.csv", self.now)
         self.assertIsNotNone(out)
         self.assertNotIn(b"Net0", out)
@@ -147,98 +164,27 @@ class PinAndSummaryHygieneTests(unittest.TestCase):
                / "requirements.txt").read_text(encoding="utf-8")
         self.assertIn(f"/v{w2w.REQUIRED_GUNGNIR}.tar.gz", req)
 
-    def test_a_dry_run_clears_the_previous_verdict(self):
-        # The reset has to happen before every return, including the
-        # dry-run early exit, or a dry run leaves the last real upload's
-        # verdict sitting there for the next reader.
-        with mock.patch.object(w2w, "_LAST_UPLOAD_SUMMARY",
-                               {"ok": True, "imported": 0}):
-            with mock.patch.object(w2w, "_cooldown_check_and_sleep"):
-                w2w._upload_chunks([csv_with_rows(1)], "x.csv", "K", "file",
-                                   dry_run=True, cooldown_sec=0)
-            self.assertIsNone(w2w._imported_total(),
-                              "a dry run must not leave a stale verdict")
-
-    def test_the_run_summary_is_cleared_before_each_upload(self):
-        # Otherwise a run that posts nothing (dry-run, or a file emptied by
-        # a filter) reads the PREVIOUS run's verdict and can hand out a
-        # day-long hold nobody earned.
-        # Asserted INSIDE the patch: mock.patch restores the attribute on
-        # exit, which would put the stale value back and hide the answer.
-        with mock.patch.object(w2w, "_LAST_UPLOAD_SUMMARY",
-                               {"ok": True, "imported": 0}):
-            with mock.patch.object(w2w, "_post_one") as post:
-                post.return_value = (200, '{"ok": true, "imported": 4}', 0.1)
-                with mock.patch.object(w2w, "_cooldown_check_and_sleep"):
-                    w2w._upload_chunks([csv_with_rows(1)], "x.csv", "K",
-                                       "file", dry_run=False, cooldown_sec=0)
-            self.assertEqual(w2w._imported_total(), 4,
-                             "the summary must describe THIS run, not the "
-                             "last")
 
 
 class RecordHoldsTests(unittest.TestCase):
-    """Hold length comes from the run SUMMARY this module builds, not from
-    gungnir's watermark.
-
-    The watermark records the last successful chunk. A 413 bisects one
-    logical chunk into several POSTs, so a final half that imported
-    nothing would otherwise stamp a day-long hold across a whole file
-    whose other half was full of new networks.
-    """
-
     def setUp(self):
         self.now = time.time()
         self.csv = csv_with_rows(2)
 
-    def _summary(self, **kw):
-        mock.patch.object(w2w, "_LAST_UPLOAD_SUMMARY", kw).start()
-        self.addCleanup(mock.patch.stopall)
-
     def _held_until(self):
-        return gungnir.holds.load(w2w.HOLDS_TOOL)["AA:BB:CC:00:00:00|Net0"]
+        return gungnir.holds.load(w2w.HOLDS_TOOL)[f"AA:BB:CC:00:00:00|Net0|{T}"]
 
-    def test_nothing_imported_earns_the_long_hold(self):
-        self._summary(ok=True, imported=0)
+    def test_an_accepted_upload_is_held_for_thirty_days(self):
         w2w._record_holds(self.csv, self.now)
-        self.assertGreater(self._held_until(),
-                           self.now + gungnir.holds.SENT_TTL)
+        self.assertEqual(self._held_until(),
+                         self.now + gungnir.holds.ACCEPTED_TTL)
 
-    def test_something_imported_keeps_the_short_hold(self):
-        self._summary(ok=True, imported=1)
+    def test_the_hold_expires(self):
         w2w._record_holds(self.csv, self.now)
-        self.assertLessEqual(self._held_until(),
-                             self.now + gungnir.holds.SENT_TTL)
-
-    def test_a_bisected_upload_uses_the_total_not_the_last_half(self):
-        # One logical chunk, 413'd and split: the left half imported 5, the
-        # right imported 0 and wrote the watermark last. The aggregate is
-        # what counts, so nothing here earns the long hold.
-        self._summary(ok=True, imported=5, chunks=2)
-        w2w._record_holds(self.csv, self.now)
-        self.assertLessEqual(self._held_until(),
-                             self.now + gungnir.holds.SENT_TTL)
-
-    def test_a_409_duplicate_earns_the_long_hold(self):
-        # The clearest confirmation the server gives: it already holds this
-        # exact file. It reports no counters, so without this it would have
-        # fallen through to "unknown" and the short hold.
-        self._summary(ok=True, duplicate_upload=True)
-        w2w._record_holds(self.csv, self.now)
-        self.assertGreater(self._held_until(),
-                           self.now + gungnir.holds.SENT_TTL)
-
-    def test_an_unreadable_summary_is_not_treated_as_zero(self):
-        for summary in (None, {}, {"imported": "lots"}):
-            with self.subTest(summary=summary):
-                gungnir.holds.save(w2w.HOLDS_TOOL, {})
-                with mock.patch.object(w2w, "_LAST_UPLOAD_SUMMARY", summary):
-                    w2w._record_holds(self.csv, self.now)
-                self.assertLessEqual(self._held_until(),
-                                     self.now + gungnir.holds.SENT_TTL)
+        later = self.now + gungnir.holds.ACCEPTED_TTL + 1
+        self.assertIs(w2w._apply_holds(self.csv, "x.csv", later), self.csv)
 
     def test_an_old_gungnir_records_nothing_and_does_not_raise(self):
-        self._summary(ok=True, imported=0)
         with mock.patch.object(w2w, "HOLDS_AVAILABLE", False):
             w2w._record_holds(self.csv, self.now)
         self.assertEqual(gungnir.holds.load(w2w.HOLDS_TOOL), {})
@@ -270,6 +216,14 @@ class EndToEndTests(unittest.TestCase):
         sent = b"".join(up.call_args.args[0])
         self.assertIn(b"Net2", sent)
         self.assertNotIn(b"Net0", sent)
+
+    def test_a_rescan_of_a_sent_network_still_goes_up(self):
+        csv = csv_with_rows(2)
+        self._upload(csv)
+        rescan = csv.replace(b"2026-06-05 10:00:00", b"2026-06-06 09:00:00")
+        _, up = self._upload(rescan)
+        self.assertEqual(up.call_count, 1,
+                         "a new sighting of a known network is new data")
 
     def test_a_failed_upload_records_nothing(self):
         csv = csv_with_rows(2)

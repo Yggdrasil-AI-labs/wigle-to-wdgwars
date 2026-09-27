@@ -6,6 +6,30 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-27 - Hold the observation, not the network
+
+### Changed
+
+- **The hold key is now MAC + SSID + FirstSeen** (was MAC + SSID). The
+  server scores a re-scan of an AP you already own (once an hour), refines
+  its position from it and resets its 45-day decay, so a network seen again
+  on a later drive is new data. The old key held it back for up to a day.
+  The same CSV row pushed again by a cron is still suppressed.
+- **Every accepted row is held for 30 days** (`gungnir.holds.ACCEPTED_TTL`),
+  replacing the hour/day split. With the observation as the key, a held row
+  is one the server already accepted byte for byte, so the length no longer
+  depends on what the response said was imported.
+- **The run summary is gone.** `_LAST_UPLOAD_SUMMARY` and `_imported_total`
+  existed only to choose the hold length.
+- **A file with no FirstSeen column holds nothing**; every row uploads.
+- **Pinned gungnir v0.5.0.** An older gungnir turns the gate off rather
+  than failing.
+
+### Upgrade note
+
+- Holds written by 1.7.x use the old key and simply stop matching, costing
+  at most one redundant upload of rows already sent.
+
 ## [1.7.1] - 2026-09-21 - Hold length now uses the whole run, not the last POST
 
 ### Fixed

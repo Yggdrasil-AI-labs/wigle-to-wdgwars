@@ -34,7 +34,7 @@ Android app, Kismet, hcxdumptool).
 """
 from __future__ import annotations
 
-__version__ = "1.7.1"
+__version__ = "1.8.0"
 GITHUB_REPO = "Yggdrasil-AI-labs/wigle-to-wdgwars"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 
@@ -114,7 +114,7 @@ _client = gungnir.Client(
 # Deliberately NOT in gungnir, unlike everything else shared: the whole
 # point is to catch a gungnir too old to be trusted, and a checker the old
 # gungnir does not carry cannot run.
-REQUIRED_GUNGNIR = "0.4.1"
+REQUIRED_GUNGNIR = "0.5.0"
 
 
 def _version_tuple(v: str) -> tuple[int, ...]:
@@ -931,28 +931,52 @@ def _apply_since(csv_bytes: bytes, since_seconds: int, name: str) -> bytes | Non
 # make the request at all when every row in the file is one it already has.
 #
 # The mechanism lives in gungnir.holds, shared with Muninn and heimdall. The
-# only thing that is ours is the key: a network on WDGWars is identified by
-# its MAC and SSID together, not by either alone, so we build the composite
-# and gungnir stores it verbatim. The MAC is upper-cased because it is
-# case-insensitive; the SSID is left exactly as captured, because two
-# networks whose names differ only in case are two networks.
+# only thing that is ours is the key, and since v1.8.0 it identifies the
+# OBSERVATION, not the network: MAC, SSID and FirstSeen together.
+#
+# Up to v1.7.1 the key was MAC + SSID, held for an hour or a day. For WiFi
+# that suppresses real data: the server scores a re-scan of an AP you
+# already own (once an hour), refines its position from it, and resets its
+# 45-day decay. A network re-scanned on tomorrow's drive is not something
+# the server has; the same CSV row pushed again by a cron is. FirstSeen is
+# what tells the two apart, so with it in the key one long hold
+# (gungnir.holds.ACCEPTED_TTL, 30 days) is safe: it only ever suppresses a
+# row the server already accepted, byte for byte.
+#
+# The MAC is upper-cased because it is case-insensitive; the SSID and
+# FirstSeen are left exactly as captured. A file with no FirstSeen column
+# has no observation key, so every row in it uploads.
 HOLDS_TOOL = "wigle-to-wdgwars"
-HOLDS_AVAILABLE = hasattr(gungnir, "holds")
+HOLDS_AVAILABLE = (hasattr(gungnir, "holds")
+                   and hasattr(gungnir.holds, "ACCEPTED_TTL"))
 
 
-def _row_key(fields: list[str]) -> str | None:
-    """The hold key for one WiGLE CSV row: MAC + SSID.
+def _firstseen_index(header_line: str) -> int | None:
+    """Column index of FirstSeen in a WiGLE header line, or None."""
+    try:
+        cols = next(_csv_mod.reader([header_line]))
+    except (StopIteration, _csv_mod.Error):
+        return None
+    try:
+        return [c.strip() for c in cols].index("FirstSeen")
+    except ValueError:
+        return None
 
-    None when either half is unreadable, which means "always upload this
-    row". Dropping an observation over a bookkeeping field is a worse
-    outcome than sending it twice.
+
+def _row_key(fields: list[str], firstseen_idx: int | None) -> str | None:
+    """The hold key for one WiGLE CSV row: MAC + SSID + FirstSeen.
+
+    None when the MAC or FirstSeen is unreadable, which means "always
+    upload this row". Dropping an observation over a bookkeeping field is a
+    worse outcome than sending it twice.
     """
-    if len(fields) < 2:
+    if firstseen_idx is None or len(fields) <= max(1, firstseen_idx):
         return None
     mac = (fields[0] or "").strip().upper()
-    if not mac:
+    seen = (fields[firstseen_idx] or "").strip()
+    if not mac or not seen:
         return None
-    return f"{mac}|{(fields[1] or '').strip()}"
+    return f"{mac}|{(fields[1] or '').strip()}|{seen}"
 
 
 def filter_csv_held(csv_bytes: bytes, state: dict, now: float
@@ -971,6 +995,7 @@ def filter_csv_held(csv_bytes: bytes, state: dict, now: float
     if len(lines) < 2:
         return csv_bytes, {"kept": 0, "dropped_held": 0, "total": 0}
     banner, header_line, *data_rows = lines[0], lines[1], *lines[2:]
+    fs_idx = _firstseen_index(header_line)
     kept: list[str] = []
     dropped_held = 0
     total = 0
@@ -983,7 +1008,7 @@ def filter_csv_held(csv_bytes: bytes, state: dict, now: float
         except (StopIteration, _csv_mod.Error):
             kept.append(line)
             continue
-        if gungnir.holds.is_held(_row_key(fields), state, now):
+        if gungnir.holds.is_held(_row_key(fields, fs_idx), state, now):
             dropped_held += 1
         else:
             kept.append(line)
@@ -1001,6 +1026,9 @@ def csv_row_keys(csv_bytes: bytes) -> list[str]:
     """Every readable hold key in a CSV, for recording after an upload."""
     text = csv_bytes.decode("utf-8", errors="replace")
     lines = text.splitlines(keepends=False)
+    if len(lines) < 2:
+        return []
+    fs_idx = _firstseen_index(lines[1])
     keys = []
     for line in lines[2:]:
         if not line.strip():
@@ -1009,7 +1037,7 @@ def csv_row_keys(csv_bytes: bytes) -> list[str]:
             fields = next(_csv_mod.reader([line]))
         except (StopIteration, _csv_mod.Error):
             continue
-        key = _row_key(fields)
+        key = _row_key(fields, fs_idx)
         if key:
             keys.append(key)
     return keys
@@ -1039,36 +1067,17 @@ def _apply_holds(csv_bytes: bytes, name: str, now: float) -> bytes | None:
     return filtered
 
 
-def _imported_total() -> int | None:
-    """How many rows the last upload imported in total, or None if that
-    cannot be established.
-
-    Read from the run summary this module builds, NOT from gungnir's
-    watermark. The watermark records the last successful chunk, and a 413
-    bisects one logical chunk into several POSTs, so trusting it would let
-    a final half that imported nothing earn a day-long hold over a whole
-    file whose other half was full of new networks.
-
-    A 409 duplicate_upload is the clearest confirmation the server can
-    give -- it holds this exact file already -- and counts as zero
-    imported.
-    """
-    summary = _LAST_UPLOAD_SUMMARY
-    if not isinstance(summary, dict):
-        return None
-    if summary.get("duplicate_upload"):
-        return 0
-    value = summary.get("imported")
-    return int(value) if isinstance(value, (int, float)) else None
-
-
 def _record_holds(csv_bytes: bytes, sent_at: float) -> None:
-    """Hold the rows we just uploaded, for as long as the server's answer
-    justifies."""
+    """Hold the rows we just uploaded for ACCEPTED_TTL.
+
+    No longer depends on what the server said it imported. The key is the
+    observation, so after an accepted upload every row in it is one the
+    server has, imported or merged, and the hour/day split that v1.7.x read
+    from the run summary no longer has anything to decide."""
     if not HOLDS_AVAILABLE:
         return
     gungnir.holds.record_keys(HOLDS_TOOL, csv_row_keys(csv_bytes), sent_at,
-                              gungnir.holds.ttl_for(_imported_total()))
+                              gungnir.holds.ACCEPTED_TTL)
 
 
 def _humanize_seconds(s: int) -> str:
@@ -1247,14 +1256,6 @@ def _aggregate(payloads: list[dict]) -> dict:
     return out
 
 
-# The summary of the most recent _upload_chunks run: the aggregate across
-# every POST it made, which is NOT the last chunk's response. _record_holds
-# needs the total, and a 413 bisects one logical chunk into several POSTs,
-# so neither len(chunks) nor gungnir's per-chunk watermark can answer "what
-# did this upload import in total".
-_LAST_UPLOAD_SUMMARY: dict | None = None
-
-
 def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
                    dry_run: bool, cooldown_sec: float) -> int:
     """POST pre-split CSV chunks to WDGWars. Returns shell exit code (0 ok).
@@ -1265,11 +1266,6 @@ def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
     bottoms out when a chunk is one row and still 413 (recorded as a failure,
     other chunks continue).
     """
-    # Cleared before anything can return, including the dry-run path, so
-    # "_LAST_UPLOAD_SUMMARY describes the last upload" is never a lie a
-    # later reader could act on.
-    global _LAST_UPLOAD_SUMMARY
-    _LAST_UPLOAD_SUMMARY = None
     total_kb = sum(len(c) for c in chunks) / 1024
     print(
         f"[wdgwars] POST {ENDPOINT} field={field} file={name} "
@@ -1363,11 +1359,9 @@ def _upload_chunks(chunks: list[bytes], name: str, key: str, field: str,
             file=sys.stderr,
         )
     if len(payloads) == 1:
-        _LAST_UPLOAD_SUMMARY = payloads[0]
         print(json.dumps(payloads[0]))
         return 0 if payloads[0].get("ok") else 1
     agg = _aggregate(payloads)
-    _LAST_UPLOAD_SUMMARY = agg
     print(json.dumps(agg))
     return 0 if agg.get("ok") else 1
 
